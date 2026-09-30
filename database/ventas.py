@@ -2,6 +2,12 @@ import mysql.connector
 
 from database.conexion import obtener_conexion
 
+from permisos import (
+    requiere_permiso,
+    REGISTRAR_VENTAS,
+    GESTIONAR_VENTAS
+)
+
 
 # =============================
 # LISTAR
@@ -210,6 +216,7 @@ def contar_ventas_de_auto(id_auto):
 # REGISTRAR VENTA
 # =============================
 
+@requiere_permiso(REGISTRAR_VENTAS)
 def registrar_venta(cliente_id, auto_id, fecha, precio):
     """
     Registra una venta dentro de una transacción.
@@ -315,6 +322,7 @@ def registrar_venta(cliente_id, auto_id, fecha, precio):
 # ELIMINAR
 # =============================
 
+@requiere_permiso(GESTIONAR_VENTAS)
 def eliminar_venta(id_venta):
     """
     Elimina una venta y devuelve la unidad al

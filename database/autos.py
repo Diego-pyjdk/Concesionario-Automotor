@@ -2,6 +2,11 @@ from database.conexion import obtener_conexion
 
 from database.ventas import contar_ventas_de_auto
 
+from permisos import (
+    requiere_permiso,
+    GESTIONAR_VEHICULOS
+)
+
 
 def obtener_autos():
 
@@ -33,6 +38,7 @@ def obtener_autos():
     return autos
 
 
+@requiere_permiso(GESTIONAR_VEHICULOS)
 def insertar_auto(marca_id, modelo, anio, precio, color, stock):
 
     conexion = obtener_conexion()
@@ -65,6 +71,7 @@ def insertar_auto(marca_id, modelo, anio, precio, color, stock):
     return id_auto
 
 
+@requiere_permiso(GESTIONAR_VEHICULOS)
 def actualizar_auto(
     id_auto,
     marca_id,
@@ -108,6 +115,7 @@ def actualizar_auto(
     conexion.close()
 
 
+@requiere_permiso(GESTIONAR_VEHICULOS)
 def eliminar_auto(id_auto):
     """
     Elimina un vehículo.

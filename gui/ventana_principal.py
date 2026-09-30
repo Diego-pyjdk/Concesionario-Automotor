@@ -9,7 +9,26 @@ from PySide6.QtWidgets import (
     QStackedWidget
 )
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
+
+import sesion as modulo_sesion
+
+from permisos import (
+    tiene_permiso,
+    VER_TABLERO,
+    VER_VEHICULOS,
+    GESTIONAR_VEHICULOS,
+    VER_MARCAS,
+    GESTIONAR_MARCAS,
+    VER_CLIENTES,
+    GESTIONAR_CLIENTES,
+    VER_VENTAS,
+    REGISTRAR_VENTAS,
+    GESTIONAR_VENTAS,
+    VER_REPORTES,
+    GESTIONAR_USUARIOS,
+    VER_CONFIGURACION
+)
 
 from database.configuracion import NOMBRE_SISTEMA
 
@@ -19,33 +38,64 @@ from gui.marcas_view import MarcasView
 from gui.clientes_view import ClientesView
 from gui.ventas_view import VentasView
 from gui.reportes_view import ReportesView
+from gui.usuarios_view import UsuariosView
 from gui.configuracion_view import ConfiguracionView
 
 
 class VentanaPrincipal(QMainWindow):
 
-    # =============================
+    # ==========================================
     # SECCIONES
-    # =============================
-    # El orden de esta lista es el orden de las
-    # páginas en el QStackedWidget, y el índice
-    # es el que usa la barra lateral.
-    # =============================
+    # ==========================================
+    # Cada entrada es
+    # (texto, clase_de_la_vista, permiso_para_ver)
+    #
+    # La vista NO se construye si el rol no
+    # tiene el permiso de lectura: así ni
+    # siquiera existe el widget prohibido.
+    # ==========================================
 
     SECCIONES = [
-        ("🏠  Inicio", 0),
-        ("🚗  Vehículos", 1),
-        ("🏷  Marcas", 2),
-        ("👤  Clientes", 3),
-        ("💰  Ventas", 4),
-        ("📊  Reportes", 5),
-        ("⚙  Configuración", 6)
+        ("🏠  Inicio", DashboardView, VER_TABLERO),
+        ("🚗  Vehículos", AutosView, VER_VEHICULOS),
+        ("🏷  Marcas", MarcasView, VER_MARCAS),
+        ("👤  Clientes", ClientesView, VER_CLIENTES),
+        ("💰  Ventas", VentasView, VER_VENTAS),
+        ("📊  Reportes", ReportesView, VER_REPORTES),
+        ("👥  Usuarios", UsuariosView, GESTIONAR_USUARIOS),
+        ("⚙  Configuración",
+         ConfiguracionView,
+         VER_CONFIGURACION)
     ]
+
+    solicitar_cierre_sesion = Signal()
 
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle(NOMBRE_SISTEMA)
+        sesion = modulo_sesion.obtener_sesion()
+
+        if not sesion.activa:
+
+            # Sin sesión no se abre el sistema: es
+            # la protección contra saltarse el
+            # login.
+
+            raise PermissionError(
+                "No hay sesión activa."
+            )
+
+        titulo = NOMBRE_SISTEMA
+
+        if sesion.nombre_completo:
+
+            titulo = (
+                f"{titulo} — "
+                f"{sesion.nombre_completo}"
+            )
+
+        self.setWindowTitle(titulo)
+
         self.resize(1200, 700)
 
         self.crear_interfaz()
@@ -65,16 +115,105 @@ class VentanaPrincipal(QMainWindow):
 
         self.paginas = QStackedWidget()
 
-        self.paginas.addWidget(DashboardView())
-        self.paginas.addWidget(AutosView())
-        self.paginas.addWidget(MarcasView())
-        self.paginas.addWidget(ClientesView())
-        self.paginas.addWidget(VentasView())
-        self.paginas.addWidget(ReportesView())
-        self.paginas.addWidget(ConfiguracionView())
-
         layout_principal.addWidget(sidebar)
         layout_principal.addWidget(self.paginas)
+
+        self.construir_paginas()
+
+    # ==========================================
+    # PÁGINAS
+    # ==========================================
+
+    def construir_paginas(self):
+        """
+        Solo se crean las vistas permitidas al
+        rol en sesión.
+        """
+
+        self.botones_menu = []
+
+        for texto, vista, permiso in self.SECCIONES:
+
+            if not tiene_permiso(permiso):
+                continue
+
+            pagina = self.crear_vista(
+                vista,
+                texto
+            )
+
+            indice = self.paginas.addWidget(pagina)
+
+            boton = QPushButton(texto)
+
+            boton.setObjectName(
+                "boton_menu"
+            )
+
+            boton.clicked.connect(
+                lambda _, i=indice: self.navegar(i)
+            )
+
+            self.contenedor_menu.addWidget(boton)
+
+            self.botones_menu.append(boton)
+
+        if not self.botones_menu:
+
+            # Un rol sin ninguna sección legible
+            # no debería poder iniciar sesión, pero
+            # si llegara aquí se cierra la ventana
+            # en vez de mostrar un marco vacío.
+
+            self.marcar_activo(0)
+
+            return
+
+        self.marcar_activo(0)
+
+    def crear_vista(self, vista, texto):
+        """
+        Pasa a cada vista solo lo que necesita
+        para esconder los botones que el rol no
+        puede usar.
+        """
+
+        if vista is AutosView:
+
+            return vista(
+                puede_gestionar=tiene_permiso(
+                    GESTIONAR_VEHICULOS
+                )
+            )
+
+        if vista is MarcasView:
+
+            return vista(
+                puede_gestionar=tiene_permiso(
+                    GESTIONAR_MARCAS
+                )
+            )
+
+        if vista is ClientesView:
+
+            return vista(
+                puede_gestionar=tiene_permiso(
+                    GESTIONAR_CLIENTES
+                )
+            )
+
+        if vista is VentasView:
+
+            return vista(
+                puede_registrar=tiene_permiso(
+                    REGISTRAR_VENTAS
+                ),
+                puede_gestionar=tiene_permiso(
+                    GESTIONAR_VENTAS
+                )
+            )
+
+        return vista()
 
     # ==========================================
     # SIDEBAR
@@ -100,32 +239,76 @@ class VentanaPrincipal(QMainWindow):
 
         layout.addSpacing(20)
 
-        # Se guardan las referencias para poder
-        # marcar la sección activa.
-        self.botones_menu = []
+        self.contenedor_menu = QVBoxLayout()
+        self.contenedor_menu.setSpacing(10)
 
-        for texto, indice in self.SECCIONES:
-
-            boton = QPushButton(texto)
-
-            boton.setObjectName(
-                "boton_menu"
-            )
-
-            boton.clicked.connect(
-                lambda _, i=indice: self.navegar(i)
-            )
-
-            layout.addWidget(boton)
-
-            self.botones_menu.append(boton)
+        layout.addLayout(self.contenedor_menu)
 
         layout.addStretch()
 
-        # Estado inicial
-        self.marcar_activo(0)
+        # ------------------------------
+        # USUARIO
+        # ------------------------------
+
+        self.etiqueta_usuario = self.crear_bloque_usuario()
+
+        layout.addWidget(self.etiqueta_usuario)
+
+        # ------------------------------
+        # CERRAR SESIÓN
+        # ------------------------------
+
+        boton_salir = QPushButton(
+            "🚪  Cerrar sesión"
+        )
+
+        boton_salir.setObjectName(
+            "boton_salir"
+        )
+
+        boton_salir.clicked.connect(
+            self.cerrar_sesion
+        )
+
+        layout.addWidget(boton_salir)
 
         return sidebar
+
+    def crear_bloque_usuario(self):
+
+        sesion = modulo_sesion.obtener_sesion()
+
+        marco = QFrame()
+        marco.setObjectName("bloque_usuario")
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(2)
+
+        marco.setLayout(layout)
+
+        nombre = QLabel(
+            sesion.nombre_usuario or ""
+        )
+
+        nombre.setObjectName(
+            "usuario_nombre"
+        )
+
+        rol = QLabel(
+            "Administrador"
+            if sesion.es_administrador
+            else "Vendedor"
+        )
+
+        rol.setObjectName(
+            "usuario_rol"
+        )
+
+        layout.addWidget(nombre)
+        layout.addWidget(rol)
+
+        return marco
 
     # ==========================================
     # NAVEGACIÓN
@@ -134,8 +317,7 @@ class VentanaPrincipal(QMainWindow):
     def navegar(self, indice):
         """
         Cambia de sección y refresca los datos de
-        la página destino, para que un cambio
-        hecho en otra sección se vea al volver.
+        la página destino.
         """
 
         self.paginas.setCurrentIndex(indice)
@@ -151,6 +333,7 @@ class VentanaPrincipal(QMainWindow):
         )
 
         if callable(recargar):
+
             recargar()
 
     def marcar_activo(self, indice):
@@ -158,6 +341,7 @@ class VentanaPrincipal(QMainWindow):
         for posicion, boton in enumerate(self.botones_menu):
 
             if posicion == indice:
+
                 boton.setObjectName(
                     "boton_menu_activo"
                 )
@@ -171,3 +355,31 @@ class VentanaPrincipal(QMainWindow):
 
             boton.style().unpolish(boton)
             boton.style().polish(boton)
+
+    # ==========================================
+    # CERRAR SESIÓN
+    # ==========================================
+
+    def cerrar_sesion(self):
+
+        from PySide6.QtWidgets import QMessageBox
+
+        respuesta = QMessageBox.question(
+            self,
+            "Cerrar sesión",
+            "¿Seguro que quieres cerrar la sesión?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if respuesta != QMessageBox.Yes:
+            return
+
+        # Destruir la sesión antes de cerrar la
+        # ventana: si algo queda visible, ya no
+        # puede hacer nada contra la base.
+
+        modulo_sesion.cerrar_sesion()
+
+        self.solicitar_cierre_sesion.emit()
+
+        self.hide()

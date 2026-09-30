@@ -1,5 +1,4 @@
 from PySide6.QtWidgets import (
-    QWidget,
     QVBoxLayout,
     QHBoxLayout,
     QLineEdit,
@@ -21,13 +20,17 @@ from utils.helpers import (
     crear_titulo
 )
 
+from gui.vista_base import VistaBase
+
 from gui.formularios.marca_form import MarcaForm
 
 
-class MarcasView(QWidget):
+class MarcasView(VistaBase):
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None, puede_gestionar=True):
+        super().__init__(parent)
+
+        self.puede_gestionar = puede_gestionar
 
         self.crear_interfaz()
 
@@ -55,12 +58,14 @@ class MarcasView(QWidget):
 
         encabezado.addStretch()
 
-        encabezado.addWidget(
-            crear_boton_principal(
-                "+ Nueva marca",
-                self.nueva_marca
+        if self.puede_gestionar:
+
+            encabezado.addWidget(
+                crear_boton_principal(
+                    "+ Nueva marca",
+                    self.nueva_marca
+                )
             )
-        )
 
         layout_principal.addLayout(encabezado)
 
@@ -169,7 +174,8 @@ class MarcasView(QWidget):
 
             botones = crear_botones_accion(
                 lambda _, f=fila: self.editar_marca(f),
-                lambda _, f=fila: self.eliminar_marca(f)
+                lambda _, f=fila: self.eliminar_marca(f),
+                mostrar_eliminar=self.puede_gestionar
             )
 
             self.tabla.setCellWidget(

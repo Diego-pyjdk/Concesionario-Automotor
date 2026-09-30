@@ -1,5 +1,10 @@
 from database.conexion import obtener_conexion
 
+from permisos import (
+    requiere_permiso,
+    GESTIONAR_MARCAS
+)
+
 
 def obtener_marcas():
 
@@ -117,6 +122,7 @@ def contar_autos_por_marca(id_marca):
 # INSERTAR
 # =============================
 
+@requiere_permiso(GESTIONAR_MARCAS)
 def insertar_marca(nombre):
 
     conexion = obtener_conexion()
@@ -144,6 +150,7 @@ def insertar_marca(nombre):
 # ACTUALIZAR
 # =============================
 
+@requiere_permiso(GESTIONAR_MARCAS)
 def actualizar_marca(id_marca, nombre):
 
     conexion = obtener_conexion()
@@ -170,6 +177,7 @@ def actualizar_marca(id_marca, nombre):
 # ELIMINAR
 # =============================
 
+@requiere_permiso(GESTIONAR_MARCAS)
 def eliminar_marca(id_marca):
     """
     Elimina una marca.

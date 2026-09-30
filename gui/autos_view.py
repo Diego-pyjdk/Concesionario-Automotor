@@ -5,7 +5,6 @@ from database.autos import (
 )
 
 from PySide6.QtWidgets import (
-    QWidget,
     QVBoxLayout,
     QHBoxLayout,
     QLineEdit,
@@ -21,13 +20,17 @@ from utils.helpers import (
     crear_titulo
 )
 
+from gui.vista_base import VistaBase
+
 from gui.formularios.auto_form import AutoForm
 
 
-class AutosView(QWidget):
+class AutosView(VistaBase):
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None, puede_gestionar=True):
+        super().__init__(parent)
+
+        self.puede_gestionar = puede_gestionar
 
         self.crear_interfaz()
 
@@ -49,12 +52,18 @@ class AutosView(QWidget):
 
         encabezado.addStretch()
 
-        encabezado.addWidget(
-            crear_boton_principal(
-                "+ Nuevo vehículo",
-                self.nuevo_auto
+        # Un vendedor solo consulta: el botón
+        # no aparece. La protección real está en
+        # database/autos.py.
+
+        if self.puede_gestionar:
+
+            encabezado.addWidget(
+                crear_boton_principal(
+                    "+ Nuevo vehículo",
+                    self.nuevo_auto
+                )
             )
-        )
 
         layout_principal.addLayout(encabezado)
 
@@ -170,7 +179,8 @@ class AutosView(QWidget):
 
             botones = crear_botones_accion(
                 lambda _, f=fila: self.editar_auto(f),
-                lambda _, f=fila: self.eliminar_auto(f)
+                lambda _, f=fila: self.eliminar_auto(f),
+                mostrar_eliminar=self.puede_gestionar
             )
 
             # Colocar botones en la tabla

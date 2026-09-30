@@ -142,10 +142,66 @@ CREATE TABLE ventas (
 
 
 -- ==========================================
+-- USUARIOS
+-- ==========================================
+-- Acceso al sistema.
+--
+-- "password_hash" guarda sal y hash separados
+-- por dos puntos, en hexadecimal. NUNCA la
+-- contraseña: no es recuperable, solo se
+-- puede comprobar.
+--
+-- "rol" es 'administrador' o 'vendedor'.
+-- "activo" = 0 deja la cuenta sin acceso sin
+-- borrarla.
+--
+-- Los dos últimos campos son para el bloqueo
+-- por intentos fallidos de login.
+--
+-- El primer administrador se crea con:
+--   venv\Scripts\python.exe crear_admin.py
+-- ==========================================
+
+CREATE TABLE usuarios (
+
+    id INT NOT NULL AUTO_INCREMENT,
+
+    nombre_usuario VARCHAR(50) NOT NULL,
+
+    nombre_completo VARCHAR(120) NOT NULL,
+
+    password_hash VARCHAR(255) NOT NULL,
+
+    rol VARCHAR(20) NOT NULL DEFAULT 'vendedor',
+
+    activo TINYINT(1) NOT NULL DEFAULT 1,
+
+    fecha_creacion DATETIME NOT NULL
+        DEFAULT CURRENT_TIMESTAMP,
+
+    ultimo_acceso DATETIME DEFAULT NULL,
+
+    intentos_fallidos INT NOT NULL DEFAULT 0,
+
+    bloqueado_hasta DATETIME DEFAULT NULL,
+
+    PRIMARY KEY (id),
+
+    UNIQUE KEY uq_usuarios_nombre (nombre_usuario)
+
+);
+
+
+-- ==========================================
 -- DATOS INICIALES
 -- ==========================================
 -- Sin marcas no se puede crear un vehículo:
 -- el ComboBox del formulario quedaría vacío.
+--
+-- No se siembran usuarios a propósito: una
+-- contraseña por defecto en el repositorio
+-- sería una puerta abierta. El primer
+-- administrador se crea con crear_admin.py.
 -- ==========================================
 
 INSERT INTO marcas (nombre) VALUES

@@ -140,6 +140,195 @@ def es_stock(valor, campo="El stock"):
 
 
 # ==========================================
+# PERSONAS Y USUARIOS
+# ==========================================
+
+# Se permiten tildes y ñ: los nombres en
+# español los tienen.
+PERSONA = r"[A-Za-zÁÉÍÓÚÜÑáéíóúüñ' \-]+"
+
+# Marcas y modelos: letras, números y los
+# signos habituales del catálogo.
+TEXTO_SIMPLE = r"[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9 .\-_/&()+]+"
+
+NOMBRE_USUARIO = r"[A-Za-z0-9._\-]+"
+
+LONGITUD_MINIMA_USUARIO = 4
+
+LONGITUD_MAXIMA_USUARIO = 30
+
+LONGITUD_MINIMA_CONTRASENA = 8
+
+LONGITUD_MAXIMA_CONTRASENA = 72
+
+
+def sin_caracteres_de_control(valor):
+    """
+    Rejecta saltos de línea y tabuladores: se
+    colarían en los nombres y no se verían en
+    la interfaz.
+    """
+
+    if valor is None:
+        return True
+
+    for caracter in str(valor):
+
+        if ord(caracter) < 32:
+            return False
+
+    return True
+
+
+def es_nombre_persona(valor, campo="El nombre"):
+    """
+    Nombre y apellido: letras, espacios, guion
+    y apóstrofo.
+    """
+
+    texto = "" if valor is None else str(valor).strip()
+
+    valido, mensaje = texto_obligatorio(texto, campo)
+
+    if not valido:
+        return valido, mensaje
+
+    if not sin_caracteres_de_control(texto):
+        return False, f"{campo} contiene caracteres no válidos."
+
+    if not re.fullmatch(PERSONA, texto):
+        return (
+            False,
+            f"{campo} solo admite letras, espacios, "
+            "guion y apóstrofo."
+        )
+
+    return True, ""
+
+
+def es_texto_simple(valor, campo, obligatorio=True):
+    """
+    Texto de catálogo: marcas y modelos.
+    """
+
+    texto = "" if valor is None else str(valor).strip()
+
+    if not texto and not obligatorio:
+        return True, ""
+
+    valido, mensaje = texto_obligatorio(texto, campo)
+
+    if not valido:
+        return valido, mensaje
+
+    if not sin_caracteres_de_control(texto):
+        return False, f"{campo} contiene caracteres no válidos."
+
+    if not re.fullmatch(TEXTO_SIMPLE, texto):
+        return (
+            False,
+            f"{campo} contiene caracteres no válidos."
+        )
+
+    return True, ""
+
+
+def es_nombre_usuario(valor, campo="El nombre de usuario"):
+    """
+    Identificador de la cuenta.
+    """
+
+    texto = "" if valor is None else str(valor).strip()
+
+    valido, mensaje = texto_obligatorio(texto, campo)
+
+    if not valido:
+        return valido, mensaje
+
+    longitud = len(texto)
+
+    if (
+        longitud < LONGITUD_MINIMA_USUARIO
+        or longitud > LONGITUD_MAXIMA_USUARIO
+    ):
+
+        return (
+            False,
+            f"{campo} debe tener entre "
+            f"{LONGITUD_MINIMA_USUARIO} y "
+            f"{LONGITUD_MAXIMA_USUARIO} caracteres."
+        )
+
+    if not re.fullmatch(NOMBRE_USUARIO, texto):
+
+        return (
+            False,
+            f"{campo} solo admite letras, números, "
+            "punto, guion y guion bajo."
+        )
+
+    return True, ""
+
+
+def es_contrasena(valor, campo="La contraseña"):
+    """
+    Exige longitud mínima y mezcla de letras y
+    números. El máximo de 72 es el límite de
+    PBKDF2-HMAC con SHA-256.
+    """
+
+    texto = "" if valor is None else str(valor)
+
+    if not texto:
+        return False, f"{campo} es obligatoria."
+
+    if len(texto) < LONGITUD_MINIMA_CONTRASENA:
+
+        return (
+            False,
+            f"{campo} debe tener al menos "
+            f"{LONGITUD_MINIMA_CONTRASENA} caracteres."
+        )
+
+    if len(texto) > LONGITUD_MAXIMA_CONTRASENA:
+
+        return (
+            False,
+            f"{campo} no puede superar "
+            f"{LONGITUD_MAXIMA_CONTRASENA} caracteres."
+        )
+
+    tiene_letras = any(
+        caracter.isalpha() for caracter in texto
+    )
+
+    tiene_numeros = any(
+        caracter.isdigit() for caracter in texto
+    )
+
+    if not tiene_letras or not tiene_numeros:
+
+        return (
+            False,
+            f"{campo} debe combinar letras y números."
+        )
+
+    return True, ""
+
+
+def contrasenas_coinciden(primera, segunda, campo="Las contraseñas"):
+    """
+    Compara la contraseña con su confirmación.
+    """
+
+    if primera != segunda:
+
+        return False, f"{campo} no coinciden."
+
+    return True, ""
+
+
+# ==========================================
 # CONTACTO
 # ==========================================
 

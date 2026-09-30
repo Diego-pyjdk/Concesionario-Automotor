@@ -1,5 +1,4 @@
 from PySide6.QtWidgets import (
-    QWidget,
     QVBoxLayout,
     QHBoxLayout,
     QLineEdit,
@@ -21,13 +20,24 @@ from utils.helpers import (
     crear_titulo
 )
 
+from gui.vista_base import VistaBase
+
 from gui.formularios.venta_form import VentaForm
 
 
-class VentasView(QWidget):
+class VentasView(VistaBase):
 
-    def __init__(self):
-        super().__init__()
+    def __init__(
+        self,
+        parent=None,
+        puede_registrar=True,
+        puede_gestionar=True
+    ):
+        super().__init__(parent)
+
+        self.puede_registrar = puede_registrar
+
+        self.puede_gestionar = puede_gestionar
 
         self.crear_interfaz()
 
@@ -55,12 +65,18 @@ class VentasView(QWidget):
 
         encabezado.addStretch()
 
-        encabezado.addWidget(
-            crear_boton_principal(
-                "+ Nueva venta",
-                self.nueva_venta
+        # El vendedor registra ventas pero no las
+        # borra: eliminar devuelve stock y altera
+        # el histórico.
+
+        if self.puede_registrar:
+
+            encabezado.addWidget(
+                crear_boton_principal(
+                    "+ Nueva venta",
+                    self.nueva_venta
+                )
             )
-        )
 
         layout_principal.addLayout(encabezado)
 
@@ -235,7 +251,8 @@ class VentasView(QWidget):
             botones = crear_botones_accion(
                 lambda _, f=fila: self.ver_venta(f),
                 lambda _, f=fila: self.eliminar_venta(f),
-                texto_editar="Ver"
+                texto_editar="Ver",
+                mostrar_eliminar=self.puede_gestionar
             )
 
             self.tabla.setCellWidget(

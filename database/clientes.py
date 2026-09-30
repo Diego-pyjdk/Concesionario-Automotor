@@ -1,5 +1,10 @@
 from database.conexion import obtener_conexion
 
+from permisos import (
+    requiere_permiso,
+    GESTIONAR_CLIENTES
+)
+
 
 # =============================
 # LISTAR
@@ -105,6 +110,84 @@ def obtener_clientes_para_venta():
 
 
 # =============================
+# DUPLICADOS
+# =============================
+
+def cliente_duplicado(
+    nombre,
+    apellido,
+    telefono,
+    email,
+    id_cliente=None
+):
+    """
+    Detecta un cliente repetido.
+
+    Se considera duplicado si coincide el
+    correo, o si coinciden nombre, apellido y
+    teléfono a la vez.
+
+    id_cliente excluye al propio cliente del
+    resultado, para que al editar no se detecte
+    a sí mismo.
+    """
+
+    condiciones = []
+
+    valores = []
+
+    if email:
+
+        condiciones.append(
+            "(email IS NOT NULL AND "
+            "LOWER(email) = LOWER(%s))"
+        )
+
+        valores.append(email)
+
+    if nombre and apellido:
+
+        # <=> compara también NULL con NULL
+        condiciones.append(
+            "(LOWER(nombre) = LOWER(%s) AND "
+            "LOWER(apellido) = LOWER(%s) AND "
+            "telefono <=> %s)"
+        )
+
+        valores.append(nombre)
+        valores.append(apellido)
+        valores.append(telefono)
+
+    if not condiciones:
+
+        return False
+
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+
+    consulta = (
+        "SELECT COUNT(*) FROM clientes WHERE ("
+        + " OR ".join(condiciones)
+        + ")"
+    )
+
+    if id_cliente:
+
+        consulta += " AND id <> %s"
+
+        valores.append(id_cliente)
+
+    cursor.execute(consulta, tuple(valores))
+
+    total = cursor.fetchone()[0]
+
+    cursor.close()
+    conexion.close()
+
+    return total > 0
+
+
+# =============================
 # EXISTENCIA
 # =============================
 
@@ -133,6 +216,7 @@ def contar_ventas_de_cliente(id_cliente):
 # INSERTAR
 # =============================
 
+@requiere_permiso(GESTIONAR_CLIENTES)
 def insertar_cliente(
     nombre,
     apellido,
@@ -172,6 +256,7 @@ def insertar_cliente(
 # ACTUALIZAR
 # =============================
 
+@requiere_permiso(GESTIONAR_CLIENTES)
 def actualizar_cliente(
     id_cliente,
     nombre,
@@ -213,6 +298,7 @@ def actualizar_cliente(
 # ELIMINAR
 # =============================
 
+@requiere_permiso(GESTIONAR_CLIENTES)
 def eliminar_cliente(id_cliente):
     """
     Elimina un cliente.

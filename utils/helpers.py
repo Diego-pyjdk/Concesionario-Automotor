@@ -10,6 +10,8 @@
 from PySide6.QtWidgets import (
     QWidget,
     QLabel,
+    QLineEdit,
+    QCheckBox,
     QHBoxLayout,
     QPushButton,
     QTableWidget,
@@ -87,7 +89,8 @@ def crear_botones_accion(
     al_editar,
     al_eliminar,
     texto_editar="Editar",
-    texto_eliminar="Eliminar"
+    texto_eliminar="Eliminar",
+    mostrar_eliminar=True
 ):
     """
     Contenedor con los botones de acción que se
@@ -96,6 +99,11 @@ def crear_botones_accion(
     texto_editar y texto_eliminar permiten
     adaptar la etiqueta: una venta no se edita,
     así que su primer botón muestra el detalle.
+
+    mostrar_eliminar=False deja el botón fuera
+    para los roles que no pueden borrar. Ojo:
+    eso solo esconde el botón. La operación
+    sigue protegida en database/*.py.
 
     Las callbacks reciben la fila como argumento,
     así que quien las conecta debe capturar el
@@ -146,9 +154,11 @@ def crear_botones_accion(
         boton_editar
     )
 
-    acciones.addWidget(
-        boton_eliminar
-    )
+    if mostrar_eliminar:
+
+        acciones.addWidget(
+            boton_eliminar
+        )
 
     return contenedor
 
@@ -210,3 +220,48 @@ def crear_titulo(texto):
     )
 
     return titulo
+
+
+# ==========================================
+# CAMPOS
+# ==========================================
+
+def crear_campo_contrasena(texto, confirmar=False):
+    """
+    Campo de contraseña con la opción de
+    revelar lo escrito.
+
+    Devuelve (campo, contenedor).
+    """
+
+    contenedor = QWidget()
+
+    layout = QHBoxLayout(contenedor)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(8)
+
+    campo = QLineEdit()
+    campo.setEchoMode(QLineEdit.Password)
+    campo.setPlaceholderText(texto)
+
+    ver = QCheckBox("Ver")
+    ver.setObjectName("casilla_ver")
+
+    def alternar(marcado):
+
+        if marcado:
+            campo.setEchoMode(QLineEdit.Normal)
+        else:
+            campo.setEchoMode(QLineEdit.Password)
+
+    ver.toggled.connect(alternar)
+
+    layout.addWidget(campo)
+    layout.addWidget(ver)
+
+    contenedor.campo = campo
+
+    if confirmar:
+        return campo, contenedor
+
+    return campo, contenedor

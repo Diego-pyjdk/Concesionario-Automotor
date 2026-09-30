@@ -368,3 +368,95 @@ QDateEdit::drop-down {
     border: none;
     width: 24px;
 }
+
+
+/* ==============================
+   LOGIN
+   ============================== */
+
+QDialog#login {
+    background-color: white;
+}
+
+QLabel#login_icono {
+    font-size: 52px;
+}
+
+QLabel#login_titulo {
+    color: #111827;
+    font-size: 24px;
+    font-weight: bold;
+}
+
+QLabel#login_subtitulo {
+    color: #6b7280;
+    font-size: 14px;
+}
+
+QLabel#login_error {
+    color: #b91c1c;
+    font-size: 13px;
+    font-weight: bold;
+    background-color: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    padding: 8px;
+}
+
+QLabel#login_pie {
+    color: #9ca3af;
+    font-size: 12px;
+}
+
+QLineEdit#campo_login {
+    font-size: 15px;
+    padding: 10px 12px;
+}
+
+
+/* ==============================
+   SESIÓN Y USUARIOS
+   ============================== */
+
+QPushButton#boton_salir {
+    background-color: transparent;
+    color: #fca5a5;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 13px;
+}
+
+QPushButton#boton_salir:hover {
+    background-color: #7f1d1d;
+    color: white;
+    border: 1px solid #b91c1c;
+}
+
+QFrame#bloque_usuario {
+    background-color: #1f2937;
+    border-radius: 8px;
+}
+
+QLabel#usuario_nombre {
+    color: white;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+QLabel#usuario_rol {
+    color: #9ca3af;
+    font-size: 11px;
+}
+
+QLabel#aviso_error {
+    color: #b91c1c;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+QCheckBox#casilla_ver {
+    color: #6b7280;
+    font-size: 12px;
+    spacing: 4px;
+}
