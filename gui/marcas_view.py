@@ -7,10 +7,10 @@ from PySide6.QtWidgets import (
     QMessageBox
 )
 
-from database.clientes import (
-    obtener_clientes,
-    buscar_clientes,
-    eliminar_cliente as eliminar_cliente_db
+from database.marcas import (
+    obtener_marcas,
+    buscar_marcas,
+    eliminar_marca as eliminar_marca_db
 )
 
 from utils.helpers import (
@@ -21,10 +21,10 @@ from utils.helpers import (
     crear_titulo
 )
 
-from gui.formularios.cliente_form import ClienteForm
+from gui.formularios.marca_form import MarcaForm
 
 
-class ClientesView(QWidget):
+class MarcasView(QWidget):
 
     def __init__(self):
         super().__init__()
@@ -50,15 +50,15 @@ class ClientesView(QWidget):
         encabezado = QHBoxLayout()
 
         encabezado.addWidget(
-            crear_titulo("Clientes")
+            crear_titulo("Marcas")
         )
 
         encabezado.addStretch()
 
         encabezado.addWidget(
             crear_boton_principal(
-                "+ Nuevo cliente",
-                self.nuevo_cliente
+                "+ Nueva marca",
+                self.nueva_marca
             )
         )
 
@@ -73,8 +73,7 @@ class ClientesView(QWidget):
         self.campo_busqueda = QLineEdit()
 
         self.campo_busqueda.setPlaceholderText(
-            "Buscar por nombre, apellido, "
-            "teléfono o email..."
+            "Buscar marca..."
         )
 
         self.campo_busqueda.setFixedHeight(40)
@@ -110,15 +109,8 @@ class ClientesView(QWidget):
         # ------------------------------
 
         self.tabla = crear_tabla(
-            [
-                "ID",
-                "Nombre",
-                "Apellido",
-                "Teléfono",
-                "Email",
-                "Acciones"
-            ],
-            columna_acciones=5,
+            ["ID", "Nombre", "Acciones"],
+            columna_acciones=2,
             ancho_acciones=148
         )
 
@@ -131,48 +123,42 @@ class ClientesView(QWidget):
         self.cargar_datos()
 
     # =============================
-    # NUEVO CLIENTE
+    # NUEVA MARCA
     # =============================
 
-    def nuevo_cliente(self):
+    def nueva_marca(self):
 
-        formulario = ClienteForm(self)
+        formulario = MarcaForm(self)
 
         if formulario.exec():
             self.cargar_datos()
 
     # =============================
-    # CARGAR CLIENTES
+    # CARGAR MARCAS
     # =============================
 
     def cargar_datos(self):
 
-        self.mostrar_clientes(
-            obtener_clientes()
+        self.mostrar_marcas(
+            obtener_marcas()
         )
 
     # =============================
-    # MOSTRAR CLIENTES
+    # MOSTRAR MARCAS
     # =============================
 
-    def mostrar_clientes(self, clientes):
+    def mostrar_marcas(self, marcas):
 
-        self.tabla.setRowCount(len(clientes))
+        self.tabla.setRowCount(len(marcas))
 
-        for fila, cliente in enumerate(clientes):
+        for fila, marca in enumerate(marcas):
 
-            (
-                id_cliente,
-                nombre,
-                apellido,
-                telefono,
-                email
-            ) = cliente
+            id_marca, nombre = marca
 
             self.tabla.setItem(
                 fila,
                 0,
-                celda(id_cliente, centrar=True)
+                celda(id_marca, centrar=True)
             )
 
             self.tabla.setItem(
@@ -181,110 +167,78 @@ class ClientesView(QWidget):
                 celda(nombre)
             )
 
-            self.tabla.setItem(
-                fila,
-                2,
-                celda(apellido)
-            )
-
-            self.tabla.setItem(
-                fila,
-                3,
-                celda(telefono or "")
-            )
-
-            self.tabla.setItem(
-                fila,
-                4,
-                celda(email or "")
-            )
-
             botones = crear_botones_accion(
-                lambda _, f=fila: self.editar_cliente(f),
-                lambda _, f=fila: self.eliminar_cliente(f)
+                lambda _, f=fila: self.editar_marca(f),
+                lambda _, f=fila: self.eliminar_marca(f)
             )
 
             self.tabla.setCellWidget(
                 fila,
-                5,
+                2,
                 botones
             )
 
     # =============================
-    # EDITAR CLIENTE
+    # EDITAR MARCA
     # =============================
 
-    def editar_cliente(self, fila):
+    def editar_marca(self, fila):
 
-        valores = []
+        item_id = self.tabla.item(fila, 0)
 
-        for columna in range(5):
+        item_nombre = self.tabla.item(fila, 1)
 
-            item = self.tabla.item(fila, columna)
+        if not item_id or not item_nombre:
+            return
 
-            if item is None:
-                return
-
-            valores.append(item.text())
-
-        (
-            id_cliente,
-            nombre,
-            apellido,
-            telefono,
-            email
-        ) = valores
-
-        cliente = (
-            int(id_cliente),
-            nombre,
-            apellido,
-            telefono or None,
-            email or None
+        marca = (
+            int(item_id.text()),
+            item_nombre.text()
         )
 
-        formulario = ClienteForm(
+        formulario = MarcaForm(
             self,
-            cliente
+            marca
         )
 
         if formulario.exec():
             self.cargar_datos()
 
     # =============================
-    # ELIMINAR CLIENTE
+    # ELIMINAR MARCA
     # =============================
 
-    def eliminar_cliente(self, fila):
+    def eliminar_marca(self, fila):
 
         item = self.tabla.item(fila, 0)
 
         if not item:
             return
 
-        id_cliente = int(item.text())
+        id_marca = int(item.text())
 
         respuesta = QMessageBox.question(
             self,
-            "Eliminar cliente",
-            "¿Estás seguro de que deseas "
-            "eliminar este cliente?",
+            "Eliminar marca",
+            "¿Estás seguro de que deseas eliminar "
+            "esta marca?",
             QMessageBox.Yes | QMessageBox.No
         )
 
         if respuesta != QMessageBox.Yes:
             return
 
-        # Un cliente con ventas no se puede
-        # eliminar: se perdería el historial.
+        # Una marca con vehículos no se puede
+        # eliminar: se perdería la información
+        # del vehículo.
 
-        if not eliminar_cliente_db(id_cliente):
+        if not eliminar_marca_db(id_marca):
             QMessageBox.warning(
                 self,
                 "No se puede eliminar",
-                "El cliente tiene ventas registradas. "
-                "No se puede eliminar para no "
-                "perder el historial."
+                "La marca tiene vehículos asociados. "
+                "Elimina o cambia de marca esos "
+                "vehículos primero."
             )
 
             return
@@ -292,7 +246,7 @@ class ClientesView(QWidget):
         self.cargar_datos()
 
     # =============================
-    # BUSCAR CLIENTE
+    # BUSCAR MARCA
     # =============================
 
     def buscar(self):
@@ -303,6 +257,6 @@ class ClientesView(QWidget):
             self.cargar_datos()
             return
 
-        self.mostrar_clientes(
-            buscar_clientes(texto)
+        self.mostrar_marcas(
+            buscar_marcas(texto)
         )

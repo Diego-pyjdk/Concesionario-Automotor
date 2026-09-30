@@ -6,22 +6,47 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QWidget,
-    QStackedWidget,
+    QStackedWidget
 )
+
 from PySide6.QtCore import Qt
 
+from database.configuracion import NOMBRE_SISTEMA
+
+from gui.dashboard_view import DashboardView
 from gui.autos_view import AutosView
+from gui.marcas_view import MarcasView
+from gui.clientes_view import ClientesView
+from gui.ventas_view import VentasView
+from gui.reportes_view import ReportesView
+from gui.configuracion_view import ConfiguracionView
 
 
 class VentanaPrincipal(QMainWindow):
 
+    # =============================
+    # SECCIONES
+    # =============================
+    # El orden de esta lista es el orden de las
+    # páginas en el QStackedWidget, y el índice
+    # es el que usa la barra lateral.
+    # =============================
+
+    SECCIONES = [
+        ("🏠  Inicio", 0),
+        ("🚗  Vehículos", 1),
+        ("🏷  Marcas", 2),
+        ("👤  Clientes", 3),
+        ("💰  Ventas", 4),
+        ("📊  Reportes", 5),
+        ("⚙  Configuración", 6)
+    ]
+
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("Concesionario")
+        self.setWindowTitle(NOMBRE_SISTEMA)
         self.resize(1200, 700)
-
-        self.autos_view = AutosView()
 
         self.crear_interfaz()
 
@@ -40,10 +65,13 @@ class VentanaPrincipal(QMainWindow):
 
         self.paginas = QStackedWidget()
 
-        dashboard = self.crear_dashboard()
-
-        self.paginas.addWidget(dashboard)
-        self.paginas.addWidget(self.autos_view)
+        self.paginas.addWidget(DashboardView())
+        self.paginas.addWidget(AutosView())
+        self.paginas.addWidget(MarcasView())
+        self.paginas.addWidget(ClientesView())
+        self.paginas.addWidget(VentasView())
+        self.paginas.addWidget(ReportesView())
+        self.paginas.addWidget(ConfiguracionView())
 
         layout_principal.addWidget(sidebar)
         layout_principal.addWidget(self.paginas)
@@ -72,109 +100,74 @@ class VentanaPrincipal(QMainWindow):
 
         layout.addSpacing(20)
 
-        boton_inicio = QPushButton("🏠  Inicio")
-        boton_autos = QPushButton("🚗  Vehículos")
-        boton_clientes = QPushButton("👤  Clientes")
-        boton_ventas = QPushButton("💰  Ventas")
-        boton_reportes = QPushButton("📊  Reportes")
-        boton_configuracion = QPushButton("⚙  Configuración")
+        # Se guardan las referencias para poder
+        # marcar la sección activa.
+        self.botones_menu = []
 
-        layout.addWidget(boton_inicio)
-        layout.addWidget(boton_autos)
-        layout.addWidget(boton_clientes)
-        layout.addWidget(boton_ventas)
-        layout.addWidget(boton_reportes)
-        layout.addWidget(boton_configuracion)
+        for texto, indice in self.SECCIONES:
+
+            boton = QPushButton(texto)
+
+            boton.setObjectName(
+                "boton_menu"
+            )
+
+            boton.clicked.connect(
+                lambda _, i=indice: self.navegar(i)
+            )
+
+            layout.addWidget(boton)
+
+            self.botones_menu.append(boton)
 
         layout.addStretch()
 
-        # Navegación
-        boton_inicio.clicked.connect(
-            lambda: self.paginas.setCurrentIndex(0)
-        )
-
-        boton_autos.clicked.connect(
-            lambda: self.paginas.setCurrentIndex(1)
-        )
+        # Estado inicial
+        self.marcar_activo(0)
 
         return sidebar
 
     # ==========================================
-    # DASHBOARD
+    # NAVEGACIÓN
     # ==========================================
 
-    def crear_dashboard(self):
+    def navegar(self, indice):
+        """
+        Cambia de sección y refresca los datos de
+        la página destino, para que un cambio
+        hecho en otra sección se vea al volver.
+        """
 
-        contenido = QFrame()
+        self.paginas.setCurrentIndex(indice)
 
-        layout = QVBoxLayout()
-        layout.setContentsMargins(30, 25, 30, 25)
-        layout.setSpacing(20)
+        self.marcar_activo(indice)
 
-        contenido.setLayout(layout)
+        pagina = self.paginas.widget(indice)
 
-        titulo = QLabel("Panel principal")
-        titulo.setObjectName("titulo")
-
-        layout.addWidget(titulo)
-
-        subtitulo = QLabel(
-            "Bienvenido al sistema de gestión del concesionario"
+        recargar = getattr(
+            pagina,
+            "cargar_datos",
+            None
         )
 
-        layout.addWidget(subtitulo)
+        if callable(recargar):
+            recargar()
 
-        tarjetas_layout = QHBoxLayout()
-        tarjetas_layout.setSpacing(15)
+    def marcar_activo(self, indice):
 
-        tarjetas_layout.addWidget(
-            self.crear_tarjeta("🚗", "Vehículos", "0")
-        )
+        for posicion, boton in enumerate(self.botones_menu):
 
-        tarjetas_layout.addWidget(
-            self.crear_tarjeta("👤", "Clientes", "0")
-        )
+            if posicion == indice:
+                boton.setObjectName(
+                    "boton_menu_activo"
+                )
+            else:
+                boton.setObjectName(
+                    "boton_menu"
+                )
 
-        tarjetas_layout.addWidget(
-            self.crear_tarjeta("💰", "Ventas", "0")
-        )
+            # Hay que reaplicar el estilo tras
+            # cambiar el objectName.
 
-        layout.addLayout(tarjetas_layout)
-
-        actividad = QLabel("Actividad reciente")
-        actividad.setObjectName("subtitulo")
-
-        layout.addWidget(actividad)
-
-        layout.addStretch()
-
-        return contenido
-
-    # ==========================================
-    # TARJETA
-    # ==========================================
-
-    def crear_tarjeta(self, icono, nombre, cantidad):
-
-        tarjeta = QFrame()
-        tarjeta.setObjectName("tarjeta")
-
-        layout = QVBoxLayout()
-        layout.setContentsMargins(20, 20, 20, 20)
-
-        tarjeta.setLayout(layout)
-
-        icono_label = QLabel(icono)
-        icono_label.setObjectName("icono")
-
-        nombre_label = QLabel(nombre)
-        nombre_label.setObjectName("nombre_tarjeta")
-
-        cantidad_label = QLabel(cantidad)
-        cantidad_label.setObjectName("cantidad")
-
-        layout.addWidget(icono_label)
-        layout.addWidget(nombre_label)
-        layout.addWidget(cantidad_label)
-
-        return tarjeta
+            boton.style().unpolish(boton)
+            boton.style().polish(boton)

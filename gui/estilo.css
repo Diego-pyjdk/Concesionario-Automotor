@@ -188,7 +188,7 @@ QPushButton#boton_eliminar:hover {
    ============================== */
 
 QComboBox {
-    background-color: rgb(243, 234, 234);
+    background-color: white;
     color: #111827;
     border: 1px solid #d1d5db;
     border-radius: 8px;
@@ -207,11 +207,11 @@ QComboBox:focus {
 /* Lista que aparece al abrir el ComboBox */
 
 QComboBox QAbstractItemView {
-    background-color: rgb(0, 0, 0);
-    color: #fffdfd;
+    background-color: white;
+    color: #111827;
     border: 1px solid #d1d5db;
-    selection-background-color: #59deff;
-    selection-color: #2160e7;
+    selection-background-color: #dbeafe;
+    selection-color: #1d4ed8;
     padding: 5px;
 }
 
@@ -225,4 +225,146 @@ QLineEdit {
 
 QLineEdit:focus {
     border: 1px solid #2563eb;
+}
+
+
+/* ==============================
+   FORMULARIOS
+   ============================== */
+
+QDialog {
+    background-color: #f5f6fa;
+}
+
+/* Botón secundario: acompaña a uno principal.
+   Sin objectName heredaría el estilo de la
+   barra lateral, que es transparente. */
+
+QPushButton#boton_secundario {
+    background-color: white;
+    color: #374151;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-weight: bold;
+}
+
+QPushButton#boton_secundario:hover {
+    background-color: #f3f4f6;
+    border: 1px solid #9ca3af;
+}
+
+/* Aviso contextual dentro de un formulario */
+
+QLabel#aviso {
+    color: #6b7280;
+    font-size: 13px;
+    padding: 6px 2px;
+}
+
+
+/* ==============================
+   BARRA LATERAL
+   ============================== */
+
+/* Sección activa de la navegación */
+
+QFrame#sidebar QPushButton#boton_menu_activo {
+    background-color: #1f2937;
+    color: white;
+    font-weight: bold;
+}
+
+
+/* ==============================
+   VISTAS Y REPORTES
+   ============================== */
+
+QFrame#filtros {
+    background-color: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+}
+
+QPushButton#boton_filtro {
+    background-color: white;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 0 18px;
+    font-weight: bold;
+}
+
+QPushButton#boton_filtro:hover {
+    background-color: #dbeafe;
+}
+
+QLabel#pie {
+    color: #6b7280;
+    font-size: 13px;
+}
+
+QTabWidget::pane {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background-color: white;
+    top: -1px;
+}
+
+QTabBar::tab {
+    background-color: #f3f4f6;
+    color: #4b5563;
+    border: 1px solid #e5e7eb;
+    border-bottom: none;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    padding: 10px 18px;
+    margin-right: 4px;
+}
+
+QTabBar::tab:selected {
+    background-color: white;
+    color: #1d4ed8;
+    font-weight: bold;
+}
+
+
+/* ==============================
+   ESTADO DE CONEXIÓN
+   ============================== */
+
+QLabel#estado_conexion {
+    font-size: 15px;
+    font-weight: bold;
+    color: #374151;
+}
+
+QLabel#estado_ok {
+    color: #15803d;
+}
+
+QLabel#estado_error {
+    color: #b91c1c;
+}
+
+
+/* ==============================
+   CAMPOS DE FECHA
+   ============================== */
+
+QDateEdit {
+    background-color: white;
+    color: #111827;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 8px 12px;
+}
+
+QDateEdit:focus {
+    border: 1px solid #2563eb;
+}
+
+QDateEdit::drop-down {
+    border: none;
+    width: 24px;
 }

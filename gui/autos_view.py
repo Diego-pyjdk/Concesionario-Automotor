@@ -1,5 +1,3 @@
-from gui.formularios.auto_form import AutoForm
-
 from database.autos import (
     obtener_autos,
     buscar_autos,
@@ -10,16 +8,20 @@ from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
-    QLabel,
-    QPushButton,
     QLineEdit,
-    QTableWidget,
-    QTableWidgetItem,
-    QHeaderView,
-    QMessageBox,
+    QPushButton,
+    QMessageBox
 )
 
-from PySide6.QtCore import Qt
+from utils.helpers import (
+    crear_tabla,
+    celda,
+    crear_botones_accion,
+    crear_boton_principal,
+    crear_titulo
+)
+
+from gui.formularios.auto_form import AutoForm
 
 
 class AutosView(QWidget):
@@ -43,18 +45,16 @@ class AutosView(QWidget):
 
         encabezado = QHBoxLayout()
 
-        titulo = QLabel("Vehículos")
-        titulo.setObjectName("titulo")
+        encabezado.addWidget(crear_titulo("Vehículos"))
 
-        boton_nuevo = QPushButton("+ Nuevo vehículo")
-        boton_nuevo.setObjectName("boton_principal")
-        boton_nuevo.setFixedHeight(40)
-
-        boton_nuevo.clicked.connect(self.nuevo_auto)
-
-        encabezado.addWidget(titulo)
         encabezado.addStretch()
-        encabezado.addWidget(boton_nuevo)
+
+        encabezado.addWidget(
+            crear_boton_principal(
+                "+ Nuevo vehículo",
+                self.nuevo_auto
+            )
+        )
 
         layout_principal.addLayout(encabezado)
 
@@ -72,7 +72,14 @@ class AutosView(QWidget):
 
         self.campo_busqueda.setFixedHeight(40)
 
+        self.campo_busqueda.returnPressed.connect(
+            self.buscar
+        )
+
         boton_buscar = QPushButton("🔍 Buscar")
+
+        boton_buscar.setObjectName("boton_filtro")
+
         boton_buscar.setFixedHeight(40)
 
         boton_buscar.clicked.connect(self.buscar)
@@ -85,47 +92,25 @@ class AutosView(QWidget):
         # =============================
         # TABLA
         # =============================
+        # El orden de estas 7 columnas es el
+        # contrato con database/autos.py: cada
+        # valor se escribe por posición.
+        # =============================
 
-        self.tabla = QTableWidget()
-
-        self.tabla.setColumnCount(8)
-
-        self.tabla.setHorizontalHeaderLabels([
-            "ID",
-            "Marca",
-            "Modelo",
-            "Año",
-            "Precio",
-            "Color",
-            "Stock",
-            "Acciones"
-        ])
-
-        # Todas las columnas se expanden
-        self.tabla.horizontalHeader().setSectionResizeMode(
-            QHeaderView.Stretch
+        self.tabla = crear_tabla(
+            [
+                "ID",
+                "Marca",
+                "Modelo",
+                "Año",
+                "Precio",
+                "Color",
+                "Stock",
+                "Acciones"
+            ],
+            columna_acciones=7,
+            ancho_acciones=148
         )
-
-        # La columna de acciones tiene tamaño fijo
-        self.tabla.horizontalHeader().setSectionResizeMode(
-            7,
-            QHeaderView.Fixed
-        )
-
-        self.tabla.setColumnWidth(7, 148)
-
-        # Seleccionar una fila completa
-        self.tabla.setSelectionBehavior(
-            QTableWidget.SelectRows
-        )
-
-        # No permitir editar directamente la tabla
-        self.tabla.setEditTriggers(
-            QTableWidget.NoEditTriggers
-        )
-
-        # Filas alternadas
-        self.tabla.setAlternatingRowColors(True)
 
         layout_principal.addWidget(self.tabla)
 
@@ -170,99 +155,26 @@ class AutosView(QWidget):
 
             for columna, dato in enumerate(auto):
 
-                item = QTableWidgetItem(str(dato))
-
                 # Centrar ID, Año y Stock
-                if columna in [0, 3, 6]:
-
-                    item.setTextAlignment(
-                        Qt.AlignCenter
-                    )
+                centrar = columna in [0, 3, 6]
 
                 self.tabla.setItem(
                     fila,
                     columna,
-                    item
+                    celda(dato, centrar=centrar)
                 )
 
             # -------------------------
             # BOTONES DE ACCIONES
             # -------------------------
 
-            contenedor = QWidget()
-
-            acciones = QHBoxLayout(contenedor)
-
-            acciones.setContentsMargins(
-                4,
-                2,
-                4,
-                2
-            )
-
-            acciones.setSpacing(6)
-
-            # BOTÓN EDITAR
-
-            boton_editar = QPushButton("Editar")
-
-            boton_editar.setObjectName(
-                "boton_editar"
-            )
-
-            boton_editar.setFixedSize(
-                60,
-                30
-            )
-
-            boton_editar.setToolTip(
-                "Editar vehículo"
-            )
-
-            boton_editar.clicked.connect(
-                lambda checked=False, fila=fila:
-                self.editar_auto(fila)
-            )
-
-            # BOTÓN ELIMINAR
-
-            boton_eliminar = QPushButton("Eliminar")
-
-            boton_eliminar.setObjectName(
-                "boton_eliminar"
-            )
-
-            boton_eliminar.setFixedSize(
-                72,
-                30
-            )
-
-            boton_eliminar.setToolTip(
-                "Eliminar vehículo"
-            )
-
-            boton_eliminar.clicked.connect(
-                lambda checked=False, fila=fila:
-                self.eliminar_auto(fila)
-            )
-
-            # Agregar botones al layout
-
-            acciones.addWidget(
-                boton_editar
-            )
-
-            acciones.addWidget(
-                boton_eliminar
+            botones = crear_botones_accion(
+                lambda _, f=fila: self.editar_auto(f),
+                lambda _, f=fila: self.eliminar_auto(f)
             )
 
             # Colocar botones en la tabla
-
-            self.tabla.setCellWidget(
-                fila,
-                7,
-                contenedor
-            )
+            self.tabla.setCellWidget(fila, 7, botones)
 
     # =============================
     # EDITAR VEHÍCULO
@@ -275,16 +187,16 @@ class AutosView(QWidget):
         # Obtener los datos de la fila
         for columna in range(7):
 
-            item = self.tabla.item(
-                fila,
-                columna
-            )
+            item = self.tabla.item(fila, columna)
 
-            datos.append(
-                item.text() if item else ""
-            )
+            if item is None:
 
-        # Convertir los datos a sus tipos correspondientes
+                return
+
+            datos.append(item.text())
+
+        # Convertir los datos a sus tipos
+        # correspondientes
 
         auto = (
             int(datos[0]),
@@ -298,10 +210,7 @@ class AutosView(QWidget):
 
         # Abrir formulario de edición
 
-        formulario = AutoForm(
-            self,
-            auto
-        )
+        formulario = AutoForm(self, auto)
 
         # Si guardó los cambios
         if formulario.exec():
@@ -314,17 +223,12 @@ class AutosView(QWidget):
 
     def eliminar_auto(self, fila):
 
-        item = self.tabla.item(
-            fila,
-            0
-        )
+        item = self.tabla.item(fila, 0)
 
         if not item:
             return
 
-        id_auto = int(
-            item.text()
-        )
+        id_auto = int(item.text())
 
         respuesta = QMessageBox.question(
             self,
@@ -333,13 +237,25 @@ class AutosView(QWidget):
             QMessageBox.Yes | QMessageBox.No
         )
 
-        if respuesta == QMessageBox.Yes:
+        if respuesta != QMessageBox.Yes:
+            return
 
-            eliminar_auto_db(
-                id_auto
+        # Un vehículo con ventas no se puede
+        # eliminar: se perdería el historial.
+
+        if not eliminar_auto_db(id_auto):
+
+            QMessageBox.warning(
+                self,
+                "No se puede eliminar",
+                "El vehículo tiene ventas registradas. "
+                "No se puede eliminar para no perder "
+                "el historial."
             )
 
-            self.cargar_datos()
+            return
+
+        self.cargar_datos()
 
     # =============================
     # BUSCAR VEHÍCULO
@@ -358,12 +274,8 @@ class AutosView(QWidget):
 
         # Buscar en MySQL
 
-        autos = buscar_autos(
-            texto
-        )
+        autos = buscar_autos(texto)
 
         # Mostrar resultados
 
-        self.mostrar_autos(
-            autos
-        )
+        self.mostrar_autos(autos)

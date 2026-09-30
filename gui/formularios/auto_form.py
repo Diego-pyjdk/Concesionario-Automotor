@@ -8,12 +8,22 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QSpinBox,
     QDoubleSpinBox,
-    QPushButton,
     QHBoxLayout,
+    QLabel,
     QMessageBox
 )
 
 from database.marcas import obtener_marcas
+
+from utils.validaciones import (
+    texto_obligatorio,
+    primer_error
+)
+
+from utils.helpers import (
+    crear_boton_principal,
+    crear_boton_secundario
+)
 
 
 class AutoForm(QDialog):
@@ -73,20 +83,40 @@ class AutoForm(QDialog):
 
         layout_principal.addLayout(formulario)
 
+        # ------------------------------
+        # AVISO DE STOCK
+        # ------------------------------
+
+        self.aviso_stock = QLabel("")
+
+        self.aviso_stock.setObjectName("aviso")
+
+        self.aviso_stock.setWordWrap(True)
+
+        layout_principal.addWidget(self.aviso_stock)
+
         botones = QHBoxLayout()
 
-        boton_cancelar = QPushButton("Cancelar")
-        boton_guardar = QPushButton("Guardar")
+        boton_cancelar = crear_boton_secundario(
+            "Cancelar",
+            self.reject
+        )
 
-        boton_guardar.setObjectName("boton_principal")
+        boton_guardar = crear_boton_principal(
+            "Guardar",
+            self.guardar
+        )
 
         botones.addWidget(boton_cancelar)
         botones.addWidget(boton_guardar)
 
         layout_principal.addLayout(botones)
 
-        boton_cancelar.clicked.connect(self.reject)
-        boton_guardar.clicked.connect(self.guardar)
+        self.actualizar_aviso()
+
+        self.campo_stock.valueChanged.connect(
+            self.actualizar_aviso
+        )
 
     def cargar_marcas(self):
 
@@ -99,16 +129,43 @@ class AutoForm(QDialog):
                 id_marca
             )
 
+    def actualizar_aviso(self):
+
+        stock = self.campo_stock.value()
+
+        if stock <= 0:
+            self.aviso_stock.setText(
+                "Sin stock: el vehículo no podrá venderse."
+            )
+
+        elif stock == 1:
+            self.aviso_stock.setText(
+                "Queda la última unidad disponible."
+            )
+
+        else:
+            self.aviso_stock.setText(
+                f"{stock} unidades disponibles."
+            )
+
     def guardar(self):
 
         modelo = self.campo_modelo.text().strip()
 
-        if not modelo:
+        error = primer_error([
+            texto_obligatorio(
+                modelo,
+                "el modelo del vehículo"
+            )
+        ])
+
+        if error:
             QMessageBox.warning(
                 self,
                 "Dato faltante",
-                "Debes ingresar el modelo del vehículo."
+                error
             )
+
             return
 
         marca_id = self.combo_marca.currentData()
@@ -167,3 +224,5 @@ class AutoForm(QDialog):
 
                 self.combo_marca.setCurrentIndex(indice)
                 break
+
+        self.actualizar_aviso()

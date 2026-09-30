@@ -1,5 +1,7 @@
 from database.conexion import obtener_conexion
 
+from database.ventas import contar_ventas_de_auto
+
 
 def obtener_autos():
 
@@ -55,8 +57,13 @@ def insertar_auto(marca_id, modelo, anio, precio, color, stock):
 
     conexion.commit()
 
+    id_auto = cursor.lastrowid
+
     cursor.close()
     conexion.close()
+
+    return id_auto
+
 
 def actualizar_auto(
     id_auto,
@@ -102,6 +109,16 @@ def actualizar_auto(
 
 
 def eliminar_auto(id_auto):
+    """
+    Elimina un vehículo.
+
+    Devuelve False si tiene ventas
+    registradas: la clave foránea lo impide y
+    no se debe perder el histórico.
+    """
+
+    if contar_ventas_de_auto(id_auto) > 0:
+        return False
 
     conexion = obtener_conexion()
     cursor = conexion.cursor()
@@ -117,6 +134,8 @@ def eliminar_auto(id_auto):
 
     cursor.close()
     conexion.close()
+
+    return True
 
 def buscar_autos(texto):
 
@@ -147,6 +166,148 @@ def buscar_autos(texto):
         consulta,
         (parametro, parametro)
     )
+
+    autos = cursor.fetchall()
+
+    cursor.close()
+    conexion.close()
+
+    return autos
+
+
+# =============================
+# STOCK
+# =============================
+# Las siguientes consultas devuelven las mismas
+# 7 columnas y en el mismo orden que obtener_autos
+# para que las vistas puedan reutilizar la misma
+# tabla sin transformaciones.
+# =============================
+
+def obtener_autos_disponibles():
+
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+
+    consulta = """
+        SELECT
+            autos.id,
+            marcas.nombre,
+            autos.modelo,
+            autos.anio,
+            autos.precio,
+            autos.color,
+            autos.stock
+        FROM autos
+        INNER JOIN marcas
+            ON autos.marca_id = marcas.id
+        WHERE autos.stock > 0
+        ORDER BY autos.id DESC
+    """
+
+    cursor.execute(consulta)
+
+    autos = cursor.fetchall()
+
+    cursor.close()
+    conexion.close()
+
+    return autos
+
+
+def obtener_autos_sin_stock():
+
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+
+    consulta = """
+        SELECT
+            autos.id,
+            marcas.nombre,
+            autos.modelo,
+            autos.anio,
+            autos.precio,
+            autos.color,
+            autos.stock
+        FROM autos
+        INNER JOIN marcas
+            ON autos.marca_id = marcas.id
+        WHERE autos.stock = 0
+        ORDER BY autos.id DESC
+    """
+
+    cursor.execute(consulta)
+
+    autos = cursor.fetchall()
+
+    cursor.close()
+    conexion.close()
+
+    return autos
+
+
+def obtener_autos_stock_bajo(limite):
+
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+
+    consulta = """
+        SELECT
+            autos.id,
+            marcas.nombre,
+            autos.modelo,
+            autos.anio,
+            autos.precio,
+            autos.color,
+            autos.stock
+        FROM autos
+        INNER JOIN marcas
+            ON autos.marca_id = marcas.id
+        WHERE autos.stock > 0
+            AND autos.stock <= %s
+        ORDER BY autos.stock ASC, autos.id DESC
+    """
+
+    cursor.execute(consulta, (limite,))
+
+    autos = cursor.fetchall()
+
+    cursor.close()
+    conexion.close()
+
+    return autos
+
+
+# =============================
+# VENTAS
+# =============================
+
+def obtener_autos_para_venta():
+    """
+    Lista para el ComboBox del formulario de
+    venta: id, etiqueta, precio y stock actual.
+    """
+
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+
+    consulta = """
+        SELECT
+            autos.id,
+            CONCAT(
+                marcas.nombre,
+                ' ',
+                autos.modelo
+            ) AS vehiculo,
+            autos.precio,
+            autos.stock
+        FROM autos
+        INNER JOIN marcas
+            ON autos.marca_id = marcas.id
+        ORDER BY marcas.nombre, autos.modelo
+    """
+
+    cursor.execute(consulta)
 
     autos = cursor.fetchall()
 
