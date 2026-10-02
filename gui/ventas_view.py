@@ -3,13 +3,26 @@ from database.ventas import (
     eliminar_venta as eliminar_venta_db
 )
 
+from database.contratos import (
+    contrato_de_venta,
+    venta_bloqueada_por_contrato
+)
+
+from permisos import (
+    tiene_permiso,
+    CREAR_CONTRATOS
+)
+
 from utils.helpers import (
-    crear_botones_accion
+    crear_botones_accion,
+    ancho_acciones_para
 )
 
 from gui.vista_listado import VistaListado
 
 from gui.formularios.venta_form import VentaForm
+
+from gui.formularios.contrato_form import ContratoForm
 
 
 class VentasView(VistaListado):
@@ -26,6 +39,18 @@ class VentasView(VistaListado):
     ]
 
     columna_acciones = 5
+
+    ANCHO_VER = 56
+
+    ANCHO_CONTRATO = 68
+
+    ANCHO_ELIMINAR = 70
+
+    ancho_acciones = ancho_acciones_para([
+        ANCHO_VER,
+        ANCHO_CONTRATO,
+        ANCHO_ELIMINAR
+    ])
 
     texto_nuevo = "+ Nueva venta"
 
@@ -89,13 +114,29 @@ class VentasView(VistaListado):
         )
 
         # Las ventas no se editan: el primer
-        # botón muestra el detalle.
+        # botón muestra el detalle. El segundo
+        # abre el contrato, que es el paso que
+        # sigue a la venta.
+
+        acciones_extra = []
+
+        if tiene_permiso(CREAR_CONTRATOS):
+
+            acciones_extra.append((
+                "Contrato",
+                lambda _, f=fila: self.crear_contrato(f),
+                "boton_editar",
+                self.ANCHO_CONTRATO
+            ))
 
         botones = crear_botones_accion(
             lambda _, f=fila: self.ver_venta(f),
             lambda _, f=fila: self.eliminar_venta(f),
             texto_editar="Ver",
-            mostrar_eliminar=self.puede_gestionar
+            mostrar_eliminar=self.puede_gestionar,
+            acciones_extra=acciones_extra,
+            ancho_editar=self.ANCHO_VER,
+            ancho_eliminar=self.ANCHO_ELIMINAR
         )
 
         self.poner_acciones(fila, botones)
@@ -123,9 +164,63 @@ class VentasView(VistaListado):
 
         formulario = VentaForm(self)
 
-        if formulario.exec():
+        if not formulario.exec():
+
+            return
+
+        # El formulario de venta ofrece crear
+        # el contrato al confirmar, pero no lo
+        # abre: se cierra primero y desde aqui
+        # se lanza. Abrirlo dentro apilaba dos
+        # dialogos modales.
+
+        if formulario.venta_para_contrato:
+
+            self.abrir_contrato(
+                formulario.venta_para_contrato
+            )
+
+            return
+
+        self.cargar_datos()
+
+    def abrir_contrato(self, id_venta):
+        """
+        Abre el contrato de una venta concreta,
+        buscando sus datos en la base.
+        """
+
+        venta = self.buscar_venta(id_venta)
+
+        if venta is None:
+
+            self.mostrar_mensaje_error(
+                "No se encontró la venta."
+            )
 
             self.cargar_datos()
+
+            return
+
+        ContratoForm(self, venta).exec()
+
+        self.cargar_datos()
+
+    def buscar_venta(self, id_venta):
+        """
+        Los datos de una venta concreta.
+
+        Devuelve la tupla que necesita
+        ContratoForm, o None si no existe.
+        """
+
+        for venta in self.proteger(obtener_ventas) or []:
+
+            if venta[0] == id_venta:
+
+                return venta
+
+        return None
 
     # =============================
     # DETALLE
@@ -164,6 +259,90 @@ class VentasView(VistaListado):
         self.mostrar_exito("\n".join(lineas))
 
     # =============================
+    # CONTRATO
+    # =============================
+
+    def crear_contrato(self, fila):
+        """
+        Abre el contrato de la venta elegida.
+
+        Es el mismo formulario que usa el botón
+        "+ Nuevo contrato" del módulo Contratos:
+        el contrato siempre nace de una venta.
+        """
+
+        id_venta = self.leer_id_venta(fila)
+
+        if id_venta is None:
+
+            return
+
+        # ------------------------------
+        # ¿YA TIENE CONTRATO?
+        # ------------------------------
+
+        existente = self.proteger(
+            contrato_de_venta,
+            id_venta
+        )
+
+        if existente:
+
+            self.mostrar_mensaje_error(
+                f"La venta {id_venta} ya tiene el "
+                f"contrato {existente['numero']}.\n\n"
+                "Una venta solo admite un contrato. "
+                "Si hay que rehacerlo, cancélalo "
+                "desde el módulo Contratos y vuelve "
+                "a intentarlo."
+            )
+
+            return
+
+        # ------------------------------
+        # DATOS DE LA VENTA
+        # ------------------------------
+        # La venta sale de los datos ya
+        # cargados, no de una consulta nueva:
+        # la fila tiene justo lo que necesita el
+        # formulario.
+
+        filas = getattr(self, "filas", [])
+
+        if fila < 0 or fila >= len(filas):
+
+            self.mostrar_mensaje_error(
+                "No se encontró la venta."
+            )
+
+            return
+
+        # Los datos ya están cargados en self.filas:
+        # la fila tiene justo lo que necesita el
+        # formulario, así que no hay que volver a
+        # consultar.
+
+        ContratoForm(self, filas[fila]).exec()
+
+        self.cargar_datos()
+
+    def leer_id_venta(self, fila):
+
+        item = self.tabla.item(fila, 0)
+
+        if not item:
+
+            return None
+
+        try:
+
+            return int(item.text())
+
+        except ValueError:
+
+            return None
+
+    # =============================
     # ANULACIÓN
     # =============================
 
@@ -176,6 +355,32 @@ class VentasView(VistaListado):
             return
 
         id_venta = int(item.text())
+
+        # ------------------------------
+        # CONTRATO VIVO
+        # ------------------------------
+        # Se comprueba antes de preguntar por
+        # la confirmación: el usuario no tiene
+        # por qué ver una pregunta si luego no
+        # va a poder hacer nada.
+
+        numero = self.proteger(
+            venta_bloqueada_por_contrato,
+            id_venta
+        )
+
+        if numero:
+
+            self.mostrar_mensaje_error(
+                f"La venta {id_venta} tiene el "
+                f"contrato {numero} y no se puede "
+                "anular.\n\n"
+                "Un contrato es un documento "
+                "firmado: si la operación se cayó, "
+                "hay que anular antes el contrato."
+            )
+
+            return
 
         if not self.confirmar_borrado(
             f"la venta {id_venta}",

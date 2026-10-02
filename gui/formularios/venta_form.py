@@ -24,6 +24,15 @@ from database.ventas import (
     registrar_venta
 )
 
+from database.contratos import (
+    contrato_de_venta
+)
+
+from permisos import (
+    tiene_permiso,
+    CREAR_CONTRATOS
+)
+
 from utils.validaciones import (
     es_precio,
     primer_error
@@ -51,6 +60,24 @@ from utils.helpers import (
 
 
 class VentaForm(QDialog):
+
+    # Id de la venta recien registrada, para
+    # que quien abrio el formulario ofrezca
+    # despues el contrato.
+    #
+    # El contrato NO se abre aqui. Anadirlo
+    # dentro de guardar() apilaba dos
+    # dialogos modales: el de la venta se
+    # quedaba abierto detras del del
+    # contrato y, peor, cualquier prueba
+    # automatica que contestara "si" se
+    # quedaba colgada esperando a que
+    # alguien cerrara a mano una ventana
+    # modal. Aqui solo se avisa de que
+    # hace falta; el formulario se cierra y
+    # es VentasView quien abre el contrato.
+
+    venta_para_contrato = None
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -312,10 +339,51 @@ class VentaForm(QDialog):
 
             return
 
-        QMessageBox.information(
-            self,
-            "Operación realizada",
-            "La venta se registró correctamente."
-        )
+        # ------------------------------
+        # OFRECER EL CONTRATO
+        # ------------------------------
+        # El contrato es el paso que sigue a la
+        # venta. Se ofrece con la venta ya
+        # cerrada y se puede rechazar: la venta
+        # queda registrada igual y el contrato se
+        # crea después desde el historial.
+
+        if self.ofrecer_contrato(resultado):
+
+            self.venta_para_contrato = resultado
 
         self.accept()
+
+    def ofrecer_contrato(self, id_venta):
+        """
+        Pregunta si se crea el contrato ahora.
+
+        Devuelve True si el usuario acepta.
+
+        Solo se pregunta a quien tiene permiso
+        para crearlo. Antes hay que comprobar
+        el permiso a mano: contrato_de_venta()
+        lanza PermisoDenegado sin él, y esa
+        excepción saltaría después de guardar la
+        venta y haría creer que falló.
+        """
+
+        if not tiene_permiso(CREAR_CONTRATOS):
+
+            return False
+
+        if contrato_de_venta(id_venta):
+
+            return False
+
+        respuesta = QMessageBox.question(
+            self,
+            "Venta registrada",
+            "La venta se registró correctamente.\n\n"
+            "¿Quiere crear ahora el contrato de "
+            "compraventa?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes
+        )
+
+        return respuesta == QMessageBox.Yes

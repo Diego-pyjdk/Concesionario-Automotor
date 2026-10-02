@@ -132,7 +132,8 @@ def comprobar_dependencias():
 
     requeridos = [
         ("PySide6", "PySide6"),
-        ("mysql-connector-python", "mysql.connector")
+        ("mysql-connector-python", "mysql.connector"),
+        ("reportlab", "reportlab")
     ]
 
     for nombre, modulo in requeridos:
@@ -323,7 +324,8 @@ def comprobar_esquema():
     requeridas = [
         "marcas", "autos", "clientes",
         "ventas", "usuarios",
-        "configuracion", "auditoria"
+        "configuracion", "auditoria",
+        "contratos"
     ]
 
     cursor.execute("SHOW TABLES")
@@ -342,9 +344,33 @@ def comprobar_esquema():
 
             fallo(
                 f"Falta la tabla {tabla}.",
-                "Ejecute database/esquema.sql "
-                "sobre una base vacía."
+                "En una base nueva, ejecute "
+                "database/esquema.sql.\n"
+                "En una base que ya tenía datos, "
+                "ejecute database/migracion_"
+                "contratos.sql: no borra nada."
             )
+
+    # La tabla contratos no sirve de nada sin
+    # la columna documento de clientes: el PDF
+    # la lee y sin ella sale siempre "No
+    # registrado".
+
+    cursor.execute(
+        "SHOW COLUMNS FROM clientes LIKE 'documento'"
+    )
+
+    if cursor.fetchone():
+
+        ok("Columna clientes.documento")
+
+    else:
+
+        fallo(
+            "Falta la columna documento en "
+            "clientes.",
+            "Ejecute database/migracion_contratos.sql"
+        )
 
     cursor.close()
     conexion.close()
@@ -418,12 +444,16 @@ def comprobar_aplicacion():
         "gui.vista_base",
         "gui.auditoria_view",
         "gui.diagnostico",
+        "gui.contratos_view",
+        "gui.formularios.contrato_form",
         "database.reportes",
         "database.auditoria",
         "database.usuarios",
+        "database.contratos",
         "utils.helpers",
         "utils.validaciones",
-        "utils.seguridad"
+        "utils.seguridad",
+        "utils.contrato_pdf"
     ]
 
     for nombre in modulos:

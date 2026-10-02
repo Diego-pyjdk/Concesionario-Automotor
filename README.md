@@ -85,8 +85,16 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Installa PySide6 (interfaz) y mysql-connector
-(conexión a la base de datos). Nada más.
+Instala tres paquetes:
+
+| Paquete | Para qué |
+|---|---|
+| `PySide6` | La interfaz |
+| `mysql-connector-python` | La conexión a MySQL |
+| `reportlab` | El PDF de los contratos |
+
+`reportlab` se trae consigo `pillow`, que se
+instala solo.
 
 ### 4. Configurar el `.env`
 
@@ -206,10 +214,48 @@ Tras 5 intentos fallidos la cuenta se bloquea
 | **Marcas** | Catálogo de marcas |
 | **Clientes** | Ficha de clientes |
 | **Ventas** | Registrar y consultar ventas |
+| **Contratos** | Contratos de compraventa y su PDF |
 | **Reportes** | Informes con filtros y CSV |
 | **Usuarios** | Cuentas y roles (solo admin) |
 | **Auditoría** | Historial de acciones (solo admin) |
 | **Configuración** | Ajustes y diagnóstico |
+
+### Contratos de compraventa
+
+El contrato documenta una venta ya registrada. No
+se crea desde cero: nace siempre de una venta,
+porque hereda de ella el cliente, el vehículo, el
+precio y la fecha.
+
+Hay tres formas de llegar al mismo sitio:
+
+1. Al registrar una venta, el sistema pregunta si
+   quieres crear el contrato ahora.
+2. En **Ventas**, cada fila tiene un botón
+   **Contrato**.
+3. En **Contratos**, el botón **+ Nuevo contrato**
+   lista las ventas que todavía no lo tienen.
+
+El número es único y se forma con el año y el id
+del propio contrato: `CTR-2026-00001`.
+
+**Una venta solo admite un contrato.** Para
+rehacerlo se cancela el anterior (un contrato
+cancelado no surte efecto pero queda registrado) y
+se crea uno nuevo desde la misma venta.
+
+Estados y transiciones:
+
+| Desde | Puede pasar a |
+|---|---|
+| Borrador | Activo, Cancelado |
+| Activo | Finalizado, Cancelado |
+| Finalizado | Cancelado |
+| Cancelado | Activo |
+
+Al confirmar, el PDF se genera solo y se guarda en
+`documentos/contratos/`. Desde el listado se puede
+volver a abrir con el botón **PDF**.
 
 ### Atajos de teclado
 
@@ -242,7 +288,9 @@ concesionario/
 │   ├── marcas.py               autos.py
 │   ├── clientes.py             ventas.py
 │   ├── usuarios.py             auditoria.py
+│   ├── contratos.py            Contratos de compraventa
 │   ├── configuracion.py        Ajustes
+│   ├── migracion_contratos.sql Para bases ya existentes
 │   └── reportes.py             Estadísticas y agregados
 │
 ├── gui/                        Interfaz
@@ -255,14 +303,18 @@ concesionario/
 │   ├── autos_view.py           marcas_view.py
 │   ├── clientes_view.py        ventas_view.py
 │   ├── usuarios_view.py        auditoria_view.py
+│   ├── contratos_view.py       contratos_view.py
 │   ├── reportes_view.py        configuracion_view.py
 │   ├── estilo.css              Apariencia
 │   └── formularios/            Formularios de alta y edición
 │
-└── utils/                      Utilidades sin dependencias
+├── documentos/contratos/       PDF generados (se crea sola)
+│
+└── utils/                      Utilidades
     ├── validaciones.py         Reglas de validación
     ├── helpers.py              Componentes reutilizables
     ├── seguridad.py            Cifrado de contraseñas
+    ├── contrato_pdf.py         Maquetación del contrato (Platypus)
     └── registro.py             Registro de errores
 ```
 
@@ -286,10 +338,16 @@ vistas nunca escriben consultas.
 | Crear y editar vehículos, marcas, clientes | Sí | **No** |
 | Eliminar cualquier registro | Sí | **No** |
 | Anular ventas | Sí | **No** |
+| Consultar y **crear** contratos | Sí | Sí |
+| Cancelar o eliminar contratos | Sí | **No** |
 | Reportes | Sí | **No** |
 | Usuarios | Sí | **No** |
 | Auditoría | Sí | **No** |
 | Configuración | Sí | **No** |
+
+El vendedor crea contratos porque son parte de
+la venta, pero no los cancela ni los borra: eso es
+de la administración.
 
 Ocultar un botón no es la protección: cada
 operación de escritura comprueba el permiso en
@@ -327,6 +385,40 @@ Usuario o contraseña incorrectos en `.env`.
 
 Se ejecutó `esquema.sql` a medias. Vuelve a
 ejecutarlo **sobre una base vacía**.
+
+### Ya tenía datos y quiero añadir los contratos
+
+`esquema.sql` empieza con `DROP DATABASE`: **no lo
+ejecutes sobre una base con datos**, se los
+borra. Usa la migración, que solo añade:
+
+```bash
+mysql -u root -p concesionario < database/migracion_contratos.sql
+```
+
+O en MySQL Workbench: *File → Open SQL Script* →
+el archivo → clic en la flecha.
+
+Qué hace, exactamente:
+
+- añade la tabla `contratos`
+- añade la columna opcional `documento` a
+  `clientes` (los clientes que ya existían se
+  quedan con `NULL` y el PDF pone "No
+  registrado")
+
+No borra ni modifica ninguna fila.
+
+### El PDF del contrato no sale
+
+Mira `documentos/contratos/` dentro del proyecto.
+Si el contrato existe pero el archivo no,
+vuelve a pulsarlo con **PDF** en el listado: se
+vuelve a generar.
+
+Si el directorio no se puede escribir, el
+contrato se guarda igual y el aviso explica por
+qué no se pudo escribir el archivo.
 
 ### "No hay ningún usuario creado"
 

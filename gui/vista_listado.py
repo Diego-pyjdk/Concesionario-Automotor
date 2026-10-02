@@ -41,7 +41,8 @@ from utils.helpers import (
     crear_busqueda,
     crear_estado_vacio,
     crear_boton_principal,
-    crear_titulo
+    crear_titulo,
+    ancho_acciones_para
 )
 
 from gui.vista_base import VistaBase
@@ -71,7 +72,18 @@ class VistaListado(VistaBase):
     # Estructura de la tabla.
 
     columna_acciones = None
-    ancho_acciones = 148
+
+    # Editar (60) + Eliminar (72) con sus
+    # separaciones, el margen y la barra de
+    # desplazamiento vertical. Se calcula en
+    # vez de poner 148 a mano: 148 se quedaba
+    # corto y los botones se salían de su celda
+    # encima de la columna vecina. Las vistas
+    # con más botones (ventas, contratos) lo
+    # recalculan con los suyos.
+
+    ancho_acciones = ancho_acciones_para([60, 72])
+
     anchos_fijos = None
 
     # Estado vacío.

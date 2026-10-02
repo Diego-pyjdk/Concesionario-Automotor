@@ -60,6 +60,10 @@ GESTIONAR_VENTAS = "gestionar_ventas"
 
 VER_REPORTES = "ver_reportes"
 
+VER_CONTRATOS = "ver_contratos"
+CREAR_CONTRATOS = "crear_contratos"
+GESTIONAR_CONTRATOS = "gestionar_contratos"
+
 GESTIONAR_USUARIOS = "gestionar_usuarios"
 
 VER_AUDITORIA = "ver_auditoria"
@@ -86,6 +90,9 @@ PERMISOS_POR_ROL = {
         REGISTRAR_VENTAS,
         GESTIONAR_VENTAS,
         VER_REPORTES,
+        VER_CONTRATOS,
+        CREAR_CONTRATOS,
+        GESTIONAR_CONTRATOS,
         GESTIONAR_USUARIOS,
         VER_AUDITORIA,
         VER_CONFIGURACION,
@@ -93,16 +100,22 @@ PERMISOS_POR_ROL = {
     },
 
     # El vendedor consulta el inventario y los
-    # clientes, y registra ventas. No borra nada,
-    # no administra usuarios y no entra a
-    # configuración ni reportes.
+    # clientes, registra ventas y crea contratos.
+    # No borra nada, no administra usuarios y no
+    # entra a configuración ni reportes.
+    #
+    # Los contratos los crea porque son parte de
+    # la venta, pero no los cancela ni los borra:
+    # eso es de la administración.
     ROL_VENDEDOR: {
         VER_TABLERO,
         VER_VEHICULOS,
         VER_MARCAS,
         VER_CLIENTES,
         VER_VENTAS,
-        REGISTRAR_VENTAS
+        REGISTRAR_VENTAS,
+        VER_CONTRATOS,
+        CREAR_CONTRATOS
     }
 }
 

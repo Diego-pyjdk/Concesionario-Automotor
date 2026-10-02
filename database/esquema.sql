@@ -101,6 +101,8 @@ CREATE TABLE clientes (
 
     email VARCHAR(100) DEFAULT NULL,
 
+    documento VARCHAR(50) DEFAULT NULL,
+
     PRIMARY KEY (id)
 
 );
@@ -267,6 +269,104 @@ CREATE TABLE auditoria (
     KEY ix_auditoria_usuario (usuario_id),
 
     CONSTRAINT auditoria_usuario_fk
+        FOREIGN KEY (usuario_id)
+        REFERENCES usuarios (id)
+        ON DELETE SET NULL
+);
+
+
+-- ==========================================
+-- CONTRATOS DE COMPRAVENTA
+-- ==========================================
+-- Un contrato por venta. Se genera después de
+-- cerrar la venta.
+--
+-- El número (CTR-2026-00001) se forma con el
+-- año y el id del propio contrato, así que es
+-- único por construcción y no depende de
+-- contar filas.
+--
+-- "venta_id" es UNIQUE: impide crear dos
+-- contratos vivos para la misma venta. Si hace
+-- falta rehacerlo, se cancela el anterior (un
+-- contrato cancelado no surte efecto) y se crea
+-- uno nuevo.
+--
+-- Las cuatro relaciones van en RESTRICT salvo
+-- el usuario, que se anula a NULL si se borra
+-- la cuenta: el contrato tiene que sobrevivir
+-- al vendedor.
+--
+-- "cantidad_cuotas" queda guardado por si más
+-- adelante se quiere un módulo de financiación;
+-- hoy solo se usa para calcular el importe de
+-- la cuota al mostrar el contrato.
+-- ==========================================
+
+CREATE TABLE contratos (
+
+    id INT NOT NULL AUTO_INCREMENT,
+
+    numero VARCHAR(30) DEFAULT NULL,
+
+    venta_id INT NOT NULL,
+
+    cliente_id INT NOT NULL,
+
+    auto_id INT NOT NULL,
+
+    usuario_id INT DEFAULT NULL,
+
+    fecha DATE NOT NULL,
+
+    precio_venta DECIMAL(10, 2) NOT NULL,
+
+    forma_pago VARCHAR(40) NOT NULL
+        DEFAULT 'Contado',
+
+    anticipo DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+
+    cantidad_cuotas INT NOT NULL DEFAULT 0,
+
+    observaciones TEXT DEFAULT NULL,
+
+    estado VARCHAR(20) NOT NULL DEFAULT 'borrador',
+
+    archivo_pdf VARCHAR(255) DEFAULT NULL,
+
+    fecha_creacion DATETIME NOT NULL
+        DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+
+    UNIQUE KEY uq_contratos_numero (numero),
+
+    UNIQUE KEY uq_contratos_venta (venta_id),
+
+    KEY ix_contratos_cliente (cliente_id),
+
+    KEY ix_contratos_auto (auto_id),
+
+    KEY ix_contratos_usuario (usuario_id),
+
+    KEY ix_contratos_estado (estado),
+
+    CONSTRAINT contratos_venta_fk
+        FOREIGN KEY (venta_id)
+        REFERENCES ventas (id)
+        ON DELETE RESTRICT,
+
+    CONSTRAINT contratos_cliente_fk
+        FOREIGN KEY (cliente_id)
+        REFERENCES clientes (id)
+        ON DELETE RESTRICT,
+
+    CONSTRAINT contratos_auto_fk
+        FOREIGN KEY (auto_id)
+        REFERENCES autos (id)
+        ON DELETE RESTRICT,
+
+    CONSTRAINT contratos_usuario_fk
         FOREIGN KEY (usuario_id)
         REFERENCES usuarios (id)
         ON DELETE SET NULL

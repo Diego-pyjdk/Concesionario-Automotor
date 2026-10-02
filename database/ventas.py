@@ -288,6 +288,8 @@ def registrar_venta(cliente_id, auto_id, fecha, precio):
             (cliente_id, auto_id, fecha, precio)
         )
 
+        id_venta = cursor.lastrowid
+
         # ------------------------------
         # 3. DESCONTAR STOCK
         # ------------------------------
@@ -316,7 +318,13 @@ def registrar_venta(cliente_id, auto_id, fecha, precio):
         cursor.close()
         conexion.close()
 
-        return True, ""
+        # Se devuelve el id, no True. Quien llama
+        # solo mira si es cierto, así que sigue
+        # funcionando igual, pero con el id puede
+        # ofrecer crear el contrato de esta venta
+        # sin tener que volver a buscarla.
+
+        return id_venta, ""
 
     except mysql.connector.Error as error:
 
@@ -343,6 +351,12 @@ def eliminar_venta(id_venta):
 
     Sin la devolución de stock, el inventario
     quedaría descuadrado respecto del histórico.
+
+    Si la venta tiene un contrato no se anula:
+    el contrato es un documento firmado y no
+    puede quedarse colgando de una venta que ya
+    no existe. Se devuelve False, como con
+    cualquier otra clave foránea.
     """
 
     conexion = obtener_conexion()
@@ -371,6 +385,35 @@ def eliminar_venta(id_venta):
             return False
 
         auto_id = venta[0]
+
+        # ------------------------------
+        # CONTRATO VIVO
+        # ------------------------------
+        # La clave foránea de contratos ya lo
+        # impediría (ON DELETE RESTRICT), pero
+        # llegar aquí saltándose esa excepción
+        # perdería el motivo: se avisaría de un
+        # "no se pudo anular" sin decir por qué.
+
+        consulta_contrato = """
+            SELECT numero, estado
+            FROM contratos
+            WHERE venta_id = %s
+        """
+
+        cursor.execute(
+            consulta_contrato, (id_venta,)
+        )
+
+        contrato = cursor.fetchone()
+
+        if contrato and contrato[1] != "cancelado":
+            conexion.rollback()
+
+            cursor.close()
+            conexion.close()
+
+            return False
 
         consulta_borrar = """
             DELETE FROM ventas

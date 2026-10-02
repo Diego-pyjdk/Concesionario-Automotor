@@ -23,16 +23,26 @@ class ClientesView(VistaListado):
         "Apellido",
         "Teléfono",
         "Email",
+        "Documento",
         "Acciones"
     ]
 
-    columna_acciones = 5
+    columna_acciones = 6
+
+    # El correo es lo más ancho de esta tabla
+    # (hasta 20 px de padding por celda), así
+    # que lleva ancho fijo: repartido a partes
+    # iguales se cortaba.
+
+    anchos_fijos = {
+        4: 130
+    }
 
     texto_nuevo = "+ Nuevo cliente"
 
     placeholder_busqueda = (
         "Buscar por nombre, apellido, "
-        "teléfono o email..."
+        "teléfono, email o documento..."
     )
 
     mensaje_vacio = "Todavía no hay clientes"
@@ -53,7 +63,8 @@ class ClientesView(VistaListado):
             nombre,
             apellido,
             telefono,
-            email
+            email,
+            documento
         ) = cliente
 
         self.marcar_columnas(
@@ -63,7 +74,8 @@ class ClientesView(VistaListado):
                 nombre,
                 apellido,
                 telefono or "",
-                email or ""
+                email or "",
+                documento or ""
             ],
             centrar={0}
         )
@@ -104,7 +116,7 @@ class ClientesView(VistaListado):
 
     def editar_cliente(self, fila):
 
-        valores = self.leer_valores(fila, 5)
+        valores = self.leer_valores(fila, 6)
 
         if valores is None:
 
@@ -115,7 +127,8 @@ class ClientesView(VistaListado):
             nombre,
             apellido,
             telefono,
-            email
+            email,
+            documento
         ) = valores
 
         cliente = (
@@ -123,7 +136,8 @@ class ClientesView(VistaListado):
             nombre,
             apellido,
             telefono or None,
-            email or None
+            email or None,
+            documento or None
         )
 
         formulario = ClienteForm(self, cliente)

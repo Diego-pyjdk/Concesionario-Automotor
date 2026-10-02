@@ -23,7 +23,8 @@ def obtener_clientes():
             nombre,
             apellido,
             telefono,
-            email
+            email,
+            documento
         FROM clientes
         ORDER BY id DESC
     """
@@ -53,13 +54,15 @@ def buscar_clientes(texto):
             nombre,
             apellido,
             telefono,
-            email
+            email,
+            documento
         FROM clientes
         WHERE
             nombre LIKE %s
             OR apellido LIKE %s
             OR telefono LIKE %s
             OR email LIKE %s
+            OR documento LIKE %s
         ORDER BY id DESC
     """
 
@@ -68,6 +71,7 @@ def buscar_clientes(texto):
     cursor.execute(
         consulta,
         (
+            parametro,
             parametro,
             parametro,
             parametro,
@@ -223,23 +227,40 @@ def insertar_cliente(
     nombre,
     apellido,
     telefono,
-    email
+    email,
+    documento=None
 ):
+    """
+    Alta de cliente.
+
+    "documento" es opcional y se añadió para
+    el contrato de compraventa. Lleva valor
+    por defecto para no romper a quien llame
+    a esta función con los cuatro datos de
+    siempre.
+    """
 
     conexion = obtener_conexion()
     cursor = conexion.cursor()
 
     consulta = """
         INSERT INTO clientes
-        (nombre, apellido, telefono, email)
-        VALUES (%s, %s, %s, %s)
+        (
+            nombre,
+            apellido,
+            telefono,
+            email,
+            documento
+        )
+        VALUES (%s, %s, %s, %s, %s)
     """
 
     valores = (
         nombre,
         apellido,
         telefono,
-        email
+        email,
+        documento
     )
 
     cursor.execute(consulta, valores)
@@ -270,8 +291,15 @@ def actualizar_cliente(
     nombre,
     apellido,
     telefono,
-    email
+    email,
+    documento=None
 ):
+    """
+    Edición de cliente.
+
+    "documento" tiene valor por defecto igual
+    que en el alta, por el mismo motivo.
+    """
 
     conexion = obtener_conexion()
     cursor = conexion.cursor()
@@ -282,7 +310,8 @@ def actualizar_cliente(
             nombre = %s,
             apellido = %s,
             telefono = %s,
-            email = %s
+            email = %s,
+            documento = %s
         WHERE id = %s
     """
 
@@ -291,6 +320,7 @@ def actualizar_cliente(
         apellido,
         telefono,
         email,
+        documento,
         id_cliente
     )
 

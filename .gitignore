@@ -5,3 +5,8 @@ __pycache__/
 .idea/
 .vscode/
 registro_errores.log
+
+# Los PDF de los contratos son documentos
+# de operaciones concretas, no código: no van
+# al repositorio.
+documentos/

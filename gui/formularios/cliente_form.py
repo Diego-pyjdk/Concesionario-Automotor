@@ -66,10 +66,16 @@ class ClienteForm(QDialog):
         self.campo_email = QLineEdit()
         self.campo_email.setPlaceholderText("Ej: ana@correo.com")
 
+        self.campo_documento = QLineEdit()
+        self.campo_documento.setPlaceholderText(
+            "Ej: 4.512.883 (para el contrato)"
+        )
+
         formulario.addRow("Nombre:", self.campo_nombre)
         formulario.addRow("Apellido:", self.campo_apellido)
         formulario.addRow("Teléfono:", self.campo_telefono)
         formulario.addRow("Email:", self.campo_email)
+        formulario.addRow("Documento:", self.campo_documento)
 
         layout_principal.addLayout(formulario)
 
@@ -103,7 +109,8 @@ class ClienteForm(QDialog):
                 self.campo_nombre,
                 self.campo_apellido,
                 self.campo_telefono,
-                self.campo_email
+                self.campo_email,
+                self.campo_documento
             ],
             self.guardar
         )
@@ -117,7 +124,8 @@ class ClienteForm(QDialog):
             nombre,
             apellido,
             telefono,
-            email
+            email,
+            documento
         ) = self.cliente
 
         self.campo_nombre.setText(str(nombre))
@@ -132,6 +140,15 @@ class ClienteForm(QDialog):
             "" if email is None else str(email)
         )
 
+        # Los clientes guardados antes de que
+        # existiera esta columna llegan sin
+        # valor: se operaba sobre tuplas de
+        # cinco elementos.
+
+        if documento is not None:
+
+            self.campo_documento.setText(str(documento))
+
     def guardar(self):
 
         nombre = self.campo_nombre.text().strip()
@@ -141,6 +158,8 @@ class ClienteForm(QDialog):
         telefono = self.campo_telefono.text().strip()
 
         email = self.campo_email.text().strip()
+
+        documento = self.campo_documento.text().strip()
 
         # ------------------------------
         # VALIDACIONES
@@ -176,6 +195,9 @@ class ClienteForm(QDialog):
         if not email:
             email = None
 
+        if not documento:
+            documento = None
+
         # ------------------------------
         # GUARDAR
         # ------------------------------
@@ -186,7 +208,8 @@ class ClienteForm(QDialog):
                 nombre,
                 apellido,
                 telefono,
-                email
+                email,
+                documento
             )
 
             mensaje = "El cliente se actualizó correctamente."
@@ -196,7 +219,8 @@ class ClienteForm(QDialog):
                 nombre,
                 apellido,
                 telefono,
-                email
+                email,
+                documento
             )
 
             mensaje = "El cliente se guardó correctamente."

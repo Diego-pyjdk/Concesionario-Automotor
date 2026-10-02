@@ -175,7 +175,10 @@ def crear_botones_accion(
     al_eliminar,
     texto_editar="Editar",
     texto_eliminar="Eliminar",
-    mostrar_eliminar=True
+    mostrar_eliminar=True,
+    acciones_extra=None,
+    ancho_editar=60,
+    ancho_eliminar=72
 ):
     """
     Contenedor con los botones de acción que se
@@ -189,6 +192,20 @@ def crear_botones_accion(
     para los roles que no pueden borrar. Ojo:
     eso solo esconde el botón. La operación
     sigue protegida en database/*.py.
+
+    acciones_extra mete botones adicionales
+    entre los dos, para las tablas que necesitan
+    un tercer camino (una venta lleva Ver,
+    Contrato y Eliminar). Cada uno es una tupla:
+
+        (texto, al_hacer_click, objeto, ancho)
+
+    "objeto" es el objectName del estilo (ver
+    gui/estilo.css) y "ancho", sus píxeles.
+
+    Los tres anchos tienen que casar con lo que
+    devuelva ancho_acciones_para(), o los
+    botones se salen de su celda.
 
     Las callbacks reciben la fila como argumento,
     así que quien las conecta debe capturar el
@@ -216,7 +233,7 @@ def crear_botones_accion(
         "boton_editar"
     )
 
-    boton_editar.setFixedSize(60, 30)
+    boton_editar.setFixedSize(ancho_editar, 30)
 
     boton_editar.setToolTip(
         texto_editar
@@ -232,7 +249,7 @@ def crear_botones_accion(
         "boton_eliminar"
     )
 
-    boton_eliminar.setFixedSize(72, 30)
+    boton_eliminar.setFixedSize(ancho_eliminar, 30)
 
     boton_eliminar.setToolTip(
         texto_eliminar
@@ -245,6 +262,20 @@ def crear_botones_accion(
     acciones.addWidget(
         boton_editar
     )
+
+    for texto, conectar, objeto, ancho in acciones_extra or []:
+
+        boton_extra = QPushButton(texto)
+
+        boton_extra.setObjectName(objeto)
+
+        boton_extra.setFixedSize(ancho, 30)
+
+        boton_extra.setToolTip(texto)
+
+        boton_extra.clicked.connect(conectar)
+
+        acciones.addWidget(boton_extra)
 
     if mostrar_eliminar:
 
@@ -347,6 +378,51 @@ def crear_titulo(texto):
 # ==========================================
 
 ESPERA_BUSQUEDA_MS = 350
+
+
+# ==========================================
+# ANCHO DE LA COLUMNA DE ACCIONES
+# ==========================================
+# Un boton de accion va con setFixedSize, asi
+# que el layout no lo puede encoger: si la
+# columna se queda corta, los botones se salen
+# de su celda y se pintan encima de la
+# columna vecina.
+#
+# El ancho no se pone a ojo. Se calcula a
+# partir de los botones que lleva, y se le
+# suma el espacio de la barra de desplazamiento
+# vertical, que Qt le resta al area visible de
+# la tabla y que no se ve en el ancho de la
+# columna.
+
+ESPACIO_ACCIONES = 6
+
+MARGEN_ACCIONES = 8
+
+ANCHO_BARRA = 20
+
+
+def ancho_acciones_para(anchos):
+    """
+    Ancho que necesita la columna de acciones
+    para que quepan sus botones.
+
+    anchos es la lista de anchos, en el mismo
+    orden en que se pintan. Se pasan los del
+    caso mas ancho (con todos los permisos),
+    porque la columna es la misma para todos.
+    """
+
+    if not anchos:
+        return 148
+
+    return (
+        sum(anchos)
+        + ESPACIO_ACCIONES * (len(anchos) - 1)
+        + MARGEN_ACCIONES
+        + ANCHO_BARRA
+    )
 
 
 def ajustar_alto_tabla(tabla, maximo=340):

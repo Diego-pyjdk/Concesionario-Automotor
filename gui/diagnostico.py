@@ -256,6 +256,14 @@ def obtener_tablas():
     y el tamaño de information_schema: se cruzan
     en Python. Así el nombre de tabla nunca se
     interpola en el SQL.
+
+    El UNION lleva una línea por cada tabla de
+    database/esquema.sql. Si al añadir una tabla
+    se olvida esta lista, la tabla sigue
+    apareciendo en el diagnóstico (la saca
+    information_schema) pero con SIEMPRE 0
+    filas, porque el get() no la encuentra: un
+    fallo silencioso que hay que evitar.
     """
 
     conexion = obtener_conexion()
@@ -271,6 +279,9 @@ def obtener_tablas():
         UNION ALL
         SELECT 'configuracion', COUNT(*)
         FROM configuracion
+        UNION ALL
+        SELECT 'contratos', COUNT(*)
+        FROM contratos
         UNION ALL
         SELECT 'marcas', COUNT(*) FROM marcas
         UNION ALL

@@ -9,7 +9,7 @@
   `venv\Scripts\python.exe crear_admin.py`
 - Instalación completa en `README.md`, paso a paso.
 
-Dependencias en `requirements.txt` (PySide6 6.11.2, mysql-connector-python 26.7.0). Todo lo demás es biblioteca estándar: **no añadas dependencias** sin motivo.
+Dependencias en `requirements.txt` (PySide6 6.11.2, mysql-connector-python 26.7.0, reportlab 5.0.1). Todo lo demás es biblioteca estándar. **No añadas dependencias** sin motivo: el PDF se compone con Platypus, que ya trae reportlab.
 
 ## Configuración
 
@@ -36,8 +36,10 @@ Módulos en la raíz:
 `database/`:
 - Un módulo por entidad: toda la escritura va con `@requiere_permiso`.
 - **`reportes.py`** — toda la capa de agregados y estadísticas, para el panel y para la pantalla de reportes. **No existe `dashboard.py`**: se absorbió aquí para que una misma cifra no se calculara de dos maneras.
+- **`contratos.py`** — contratos de compraventa. El número (`CTR-2026-00001`) se arma con el año y el **id del propio contrato**, dentro de la misma transacción: se hace `INSERT` con `numero` a NULL, se toma `lastrowid` y se hace `UPDATE`. Así es único por construcción y no depende de contar filas ni de que dos usuarios creen contratos a la vez.
 - `auditoria.py`, `configuracion.py` — servicios transversales.
-- `esquema.sql` — 7 tablas. Empieza con `DROP DATABASE`: es un script desde cero, nunca sobre datos reales.
+- `esquema.sql` — 8 tablas. Empieza con `DROP DATABASE`: es un script desde cero, nunca sobre datos reales.
+- `migracion_contratos.sql` — para bases que **ya** tienen datos: añade `contratos` y `clientes.documento` sin tocar ninguna fila.
 
 `gui/`:
 - **`vista_base.py`** — `VistaBase`. Envuelve la base de datos en `self.proteger(operacion, *args)`, que devuelve `None` si falla y muestra un mensaje legible. `mostrar_mensaje_error(texto)` es para errores sin excepción (un borrado bloqueado por FK, que vuelve como `False`).
@@ -53,7 +55,7 @@ Módulos en la raíz:
 
 Dos capas. Ocultar un botón no es la protección.
 
-1. `VentanaPrincipal.SECCIONES` es `(texto, vista, permiso)`. Una vista **no se construye** si al rol le falta el permiso de lectura. Son 9 secciones para el administrador, 5 para el vendedor.
+1. `VentanaPrincipal.SECCIONES` es `(texto, vista, permiso)`. Una vista **no se construye** si al rol le falta el permiso de lectura. Son 10 secciones para el administrador, 6 para el vendedor.
 2. `@requiere_permiso(PERMISO)` sobre las funciones que escriben. Sin sesión, todo permiso es `False`.
 
 | | administrador | vendedor |
@@ -62,6 +64,8 @@ Dos capas. Ocultar un botón no es la protección.
 | Registrar ventas | sí | sí |
 | Crear, editar y **borrar** autos / marcas / clientes | sí | **no** |
 | **Borrar** ventas | sí | **no** |
+| Consultar y **crear** contratos | sí | sí |
+| Cancelar o eliminar contratos | sí | **no** |
 | Reportes / Usuarios / Auditoría / Configuración | sí | **no** |
 
 - Un intento denegado escribe `ACCESO_DENEGADO` en la auditoría antes de lanzar la excepción.
@@ -119,9 +123,21 @@ Reordenar o añadir una columna rompe la interfaz sin error en la capa de datos.
 
 Las consultas de stock de `database/autos.py` reutilizan esas mismas 7 columnas para que `ReportesView` comparta el pintado (es de solo lectura, no deshace nada).
 
-Otros contratos: `obtener_ventas` → `id, fecha, cliente, vehiculo, precio` (los dos últimos son `CONCAT`, no ids). `obtener_usuarios` → `id, nombre_usuario, nombre_completo, rol, activo, ultimo_acceso, intentos_fallidos, bloqueado_hasta`.
+Otros contratos: `obtener_ventas` → `id, fecha, cliente, vehiculo, precio` (los dos últimos son `CONCAT`, no ids). `obtener_usuarios` → `id, nombre_usuario, nombre_completo, rol, activo, ultimo_acceso, intentos_fallidos, bloqueado_hasta`. **`obtener_clientes` → `id, nombre, apellido, telefono, email, documento`** (6 columnas): `documento` se añadió para el contrato y `ClientesView`, `ClienteForm` y las búsquedas se actualizaron a la vez.
+
+`obtener_tablas()` en `gui/diagnostico.py` cruza en Python un `UNION` de conteos con `information_schema`: el nombre de tabla nunca se interpola en el SQL. **El `UNION` lleva una línea por cada tabla de `esquema.sql`.** Si al añadir una tabla se olvida esa línea, la tabla sigue apareciendo en el diagnóstico pero con **siempre 0 filas**, porque el `get()` no la encuentra: un fallo silencioso.
 
 `leer_valores()` devuelve `None` si falta una celda, en vez de inventar un vacío que reventaría la conversión.
+
+## Los contratos no se editan
+
+Como las ventas, un contrato es histórico. Se cancela y se rehace desde la venta. `TRANSICIONES` en `database/contratos.py` es el único sitio donde se decide qué cambio de estado es legal: `finalizado` no vuelve a `activo` (sí se puede anular), `cancelado` sí se puede reactivar porque no surte efecto.
+
+`venta_id` es UNIQUE: impide dos contratos vivos para la misma venta. La ruta para rehacer uno es cancelar el anterior y crear el nuevo, y `crear_contrato()` borra el cancelado dentro de la misma transacción.
+
+Una venta con contrato vivo **no se puede anular**. La clave foránea ya lo impide (`ON DELETE RESTRICT`), pero `eliminar_venta()` lo comprueba antes para poder devolver `False` en vez de saltar por la excepción, y la vista usa `venta_bloqueada_por_contrato()` para explicarlo en vez de decir "no se pudo anular".
+
+`registrar_venta()` devuelve el **id** de la venta, no `True`. Quien llama solo mira si es cierto y no cambia, pero con el id el formulario puede ofrecer el contrato sin volver a buscarla.
 
 ## Las ventas no se editan
 
@@ -152,6 +168,10 @@ Vaciar el campo filtra al instante: sin texto no hay nada que filtrar.
 - Las etiquetas de error empiezan ocultas (`setVisible(False)`) y se ocultan al limpiarlas, o queda un recuadro rojo vacío.
 - **No dibujes flechas en QSS con bordes:** salen como bloques sólidos. Deja `::down-arrow` al estilo de Qt.
 - No pongas anchos fijos en tablas dentro de paneles estrechos: las columnas centrales se colapsan a unos píxeles. Da más ancho al panel, no a la columna.
+- **El ancho de la columna de acciones se CALCULA, nunca se pone a mano.** Los botones van con `setFixedSize`, así que el layout no los encoge: si la columna se queda corta se salen de su celda y se pintan encima de la vecina. Usa `ancho_acciones_para([...])` con los anchos de tus botones. Suma el hueco de la barra de desplazamiento vertical: Qt se la resta al área visible y no aparece en el ancho de la columna. Un ancho de 148 a mano para dos botones se quedaba 18 px corto.
+- **Los botones de acción se capturan por valor:** `lambda _, f=fila: self.algo(f)`. Para meter un tercer botón, pásalo en `acciones_extra=[(texto, callback, objeto, ancho)]` en vez de tocar el helper.
+- El ancho de una columna debe cubrir el **texto + los 20 px de padding** de `QTableWidget::item { padding: 9px 10px }`. Sin ese padding el cálculo da falsos negativos y en pantalla el texto sale con puntos suspensivos.
+- **No abras un diálogo modal desde dentro de otro.** `VentaForm.guardar()` deja `venta_para_contrato` y es `VentasView` quien lanza el contrato al cerrar. Encadenarlos apila dos modales y cuelga cualquier prueba que conteste "Sí" a un `QMessageBox`.
 
 ## Estilo del código
 
@@ -169,7 +189,22 @@ No hay suite de tests en el repositorio. Hasta que la haya, comprueba con estas 
 
 - `venv\Scripts\python.exe verificar_instalacion.py` — entorno y conexión.
 - Compilar todos los `.py` y revisar imports sin usar con AST.
-- **Construir cada vista y cada formulario** en `QT_QPA_PLATFORM=offscreen` y navegar por las 9 secciones. Es lo único que detecta un `NameError` de runtime, un import que sobra o un parámetro mal pasado.
-- Parchear `QMessageBox.warning/information/question/critical` antes de construir nada: si no, un error inesperado **cuelga** la comprobación en vez de fallarla. Si una comprobación se queda colgada, busca el `QMessageBox` que nadie parcheó.
+- **Construir cada vista y cada formulario** en `QT_QPA_PLATFORM=offscreen` y navegar por las 10 secciones. Es lo único que detecta un `NameError` de runtime, un import que sobra o un parámetro mal pasado. El `QWidget` sin importar en `contrato_form.py` solo apareció así.
+- Parchear `QMessageBox.warning/information/question/critical` antes de construir nada: si no, un error inesperado **cuelga** la comprobación en vez de fallarla. Si una comprobación se queda colgada, busca el `QMessageBox` que nadie parcheó. Lo mismo con `QInputDialog.getItem`.
+- **Medir la maqueta, no fiarse de la captura.** `grab()` sin pantalla duplica los widgets de celda (el mismo botón sale dos veces) y usa una fuente genérica más ancha que Segoe UI: aparenta que todo el texto se corta y no es cierto. Registra las fuentes del sistema y comprueba con `QFontMetrics` si un botón cabe en su celda y si el texto cabe en su columna. Para que la captura salga limpia, espera un ciclo de eventos (`QEventLoop` + `QTimer.singleShot`) antes de hacer `grab()`.
 - Para esperar a un `QTimer` hay que procesar eventos (`app.processEvents()` en bucle); `time.sleep` no los deja correr.
 - Capturas sin pantalla: `widget.grab().save(ruta)` tras registrar fuentes del sistema con `QFontDatabase.addApplicationFont()` (`segoeui.ttf`, `segoeuib.ttf`, `arial.ttf`, `seguiemj.ttf`). Sin eso salen cajas en vez de acentos y emojis: es un artefacto del renderizado, no un fallo de la aplicación.
+- **Cuidado con las pruebas destructivas.** `test_auditoria.py` llama a `vaciar_auditoria()` al empezar y en un `finally`: deja el registro de auditoría vacío. Las pruebas de contratos borran lo que crean capturando el id devuelto, nunca "el último" ni "por posición".
+
+## El PDF
+
+`utils/contrato_pdf.py` maqueta el contrato con **Platypus** (reportlab). Se compone en flujo: cada bloque mide su alto, el texto se ajusta solo al ancho de su columna y salta de página sin partir nada a la mitad. Con esto ya no se calculan posiciones ni anchos de glifo a mano.
+
+- **La banda de la cabecera y el pie se dibujan en `onPage`, no en el flujo.** Son decoración: si fueran flowables ocuparían hueco en el marco y se podrían partir. `_pintar_hoja` se llama una vez por hoja. Para leer los datos del contrato, `construir_documento` los cuelga en `documento.contrato`: reportlab no se los pasa a la función de página.
+- **Un `Table` necesita un ancho por celda, no por par.** Si se dan menos de los que hay celdas, reportlab calcula el último por su cuenta, la fila se pasa de ancha y la tabla se centra saliendose por la izquierda. Pasa en `bloque_total`, que tiene 2 celdas sin cuotas y 3 con ellas.
+- **Escapa SIEMPRE el texto que va en un `Paragraph`.** `Paragraph` lee `<b>`, `<i>` y `&` como marcado: un precio con `<` o un "&" en una observación rompe el párrafo. `escapar()` los neutraliza siempre, no solo cuando "parece" que haga falta.
+- **reportlab sustituye en silencio lo que la fuente no sabe dibujar**, por el glifo `.notdef` de Helvetica, que es una "n": un emoji pegado en unas observaciones salía como "nn", que parece una palabra y no un signo ilegible. `sustituir_no_mapeables()` cambia por "?" lo que no se puede convertir a `cp1252`, que es lo que hay detrás de `WinAnsiEncoding`. Con eso la "€" (0x80 en WinAnsi) se conserva y sale bien; los emoji y el chino salen como "?".
+- Los estilos se construyen en `construir_estilos()`, no como constantes de módulo: `getSampleStyleSheet()` toca el registro global de reportlab y llamarlo al importar modificaría el proceso aunque nadie genere un PDF.
+- Las fuentes base-14 (Helvetica) no hay que incrustarlas. reportlab les pone `/WinAnsiEncoding`, que ya cubre tildes, ñ, «», · y €.
+- **Para comprobar un PDF no vale un volcado a pelo:** reportlab codifica las páginas con ASCII85 y luego Flate, y además coloca cada bloque con `cm`. Hay que descomprimir (en ese orden) y sumar las traslaciones para saber dónde cae cada texto.
+- `KeepTogether` en el bloque de condiciones y en el de firmas: si no caben enteros pasan a la página siguiente en vez de quedar partidos.

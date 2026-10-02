@@ -26,6 +26,8 @@ from permisos import (
     REGISTRAR_VENTAS,
     GESTIONAR_VENTAS,
     VER_REPORTES,
+    VER_CONTRATOS,
+    GESTIONAR_CONTRATOS,
     GESTIONAR_USUARIOS,
     VER_AUDITORIA,
     VER_CONFIGURACION
@@ -40,6 +42,7 @@ from gui.autos_view import AutosView
 from gui.marcas_view import MarcasView
 from gui.clientes_view import ClientesView
 from gui.ventas_view import VentasView
+from gui.contratos_view import ContratosView
 from gui.reportes_view import ReportesView
 from gui.usuarios_view import UsuariosView
 from gui.auditoria_view import AuditoriaView
@@ -65,6 +68,7 @@ class VentanaPrincipal(QMainWindow):
         ("🏷  Marcas", MarcasView, VER_MARCAS),
         ("👤  Clientes", ClientesView, VER_CLIENTES),
         ("💰  Ventas", VentasView, VER_VENTAS),
+        ("📄  Contratos", ContratosView, VER_CONTRATOS),
         ("📊  Reportes", ReportesView, VER_REPORTES),
         ("👥  Usuarios", UsuariosView, GESTIONAR_USUARIOS),
         ("🛡  Auditoría", AuditoriaView, VER_AUDITORIA),
@@ -101,7 +105,13 @@ class VentanaPrincipal(QMainWindow):
 
         self.setWindowTitle(titulo)
 
-        self.resize(1200, 700)
+        # Con siete columnas en contratos más los
+        # botones de fila, 1200 px se quedaba
+        # corto: el nombre del cliente salía con
+        # puntos suspensivos. 1320 da el hueco
+        # que necesitan; la ventana sigue
+        # siendo redimensionable.
+        self.resize(1320, 780)
 
         self.crear_interfaz()
 
@@ -215,6 +225,14 @@ class VentanaPrincipal(QMainWindow):
                 ),
                 puede_gestionar=tiene_permiso(
                     GESTIONAR_VENTAS
+                )
+            )
+
+        if vista is ContratosView:
+
+            return vista(
+                puede_gestionar=tiene_permiso(
+                    GESTIONAR_CONTRATOS
                 )
             )
 
