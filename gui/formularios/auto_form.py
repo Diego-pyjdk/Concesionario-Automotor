@@ -22,7 +22,8 @@ from utils.validaciones import (
 
 from utils.helpers import (
     crear_boton_principal,
-    crear_boton_secundario
+    crear_boton_secundario,
+    conectar_enter_guardar
 )
 
 
@@ -116,6 +117,16 @@ class AutoForm(QDialog):
 
         self.campo_stock.valueChanged.connect(
             self.actualizar_aviso
+        )
+
+        # Return guarda desde los campos de texto.
+        # En los desplegables y el contador hay
+        # que elegir con ratón o con tabulador:
+        # un Return allí cerraría el combo.
+
+        conectar_enter_guardar(
+            [self.campo_modelo, self.campo_color],
+            self.guardar
         )
 
     def cargar_marcas(self):

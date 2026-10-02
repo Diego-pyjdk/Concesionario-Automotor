@@ -103,10 +103,20 @@ class VistaBase(QWidget):
         Muestra un error controlado.
         """
 
+        self.mostrar_mensaje_error(error.mensaje)
+
+    def mostrar_mensaje_error(self, mensaje):
+        """
+        Muestra un texto de error sin excepciones
+        de por medio: es el caso de un borrado
+        bloqueado por una clave foránea, que la
+        capa de datos devuelve como booleano.
+        """
+
         QMessageBox.warning(
             self,
             "No se pudo completar la operación",
-            error.mensaje
+            mensaje
         )
 
     def mostrar_error_inesperado(self):

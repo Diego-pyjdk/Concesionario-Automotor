@@ -20,7 +20,8 @@ from utils.validaciones import (
 
 from utils.helpers import (
     crear_boton_principal,
-    crear_boton_secundario
+    crear_boton_secundario,
+    conectar_enter_guardar
 )
 
 
@@ -80,6 +81,14 @@ class MarcaForm(QDialog):
         )
 
         layout_principal.addLayout(botones)
+
+        # Return guarda, Escape cierra (lo
+        # segundo lo resuelve QDialog solo).
+
+        conectar_enter_guardar(
+            [self.campo_nombre],
+            self.guardar
+        )
 
         self.campo_nombre.setFocus()
 

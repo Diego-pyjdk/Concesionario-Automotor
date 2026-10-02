@@ -1,52 +1,60 @@
 # AGENTS.md
 
-## Commands
+## Comandos
 
-- Run from the **repo root**: `venv\Scripts\python.exe main.py`
-  - Root is mandatory. Imports are absolute from the project root and `main.py` opens `gui/estilo.css` by relative path.
-- **First time only**, create the initial administrator (interactive, hidden password):
-  - `venv\Scripts\python.exe crear_admin.py`
-  - Only works while no active administrator exists. After that, accounts are made from the Usuarios screen.
-- Credentials live in **`.env`** at the repo root (gitignored). `.env.example` is the template. `database/conexion.py` reads `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, with real environment variables taking precedence over the file.
-- There is **no `requirements.txt` / `pyproject.toml` / lockfile**. Dependencies exist only in the local (gitignored) `venv/`: Python 3.13.15, PySide6 6.11.2, mysql-connector-python 26.7.0. Phase 2 added nothing — everything uses the standard library.
-- **No tests, linter, formatter or type checker are committed.** Verification is manual.
-- Headless check of the GUI: `QT_QPA_PLATFORM=offscreen` plus a `QApplication`, with `QMessageBox.warning/information/question/critical` monkeypatched (they block on `exec()`).
+- Arrancar desde la **raíz del proyecto**: `venv\Scripts\python.exe main.py`
+- Comprobar la instalación: `venv\Scripts\python.exe verificar_instalacion.py`
+  - Recorre los pasos de instalación y dice en cuáles falla y cómo arreglarlo.
+- Administrador inicial (solo si no hay ninguno activo):
+  `venv\Scripts\python.exe crear_admin.py`
+- Instalación completa en `README.md`, paso a paso.
 
-## Startup flow
+Dependencias en `requirements.txt` (PySide6 6.11.2, mysql-connector-python 26.7.0). Todo lo demás es biblioteca estándar: **no añadas dependencias** sin motivo.
 
-`main.py` → `LoginView` → `VentanaPrincipal`. The main window is only constructed after a successful login.
+## Configuración
 
-- `main.py` now has an `if __name__ == "__main__":` guard (it did not in phase 1).
-- Logout emits `VentanaPrincipal.solicitar_cierre_sesion` (a `Signal`, not `pyqtSignal` — that name does not exist in PySide6). `main.mostrar_login` hides + `deleteLater()`s the old window and shows the login again, so the process survives a logout. Closing the main window with the X quits the app.
-- **Never build `VentanaPrincipal` without an active session**: it raises `PermissionError` on purpose.
+- Las credenciales van en **`.env`** (gitignored). `.env.example` es la plantilla. `database/conexion.py` lee `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`; las variables reales del entorno mandan sobre el archivo.
+- **`cargar_env()` abre el `.env` con `encoding="utf-8-sig"`, no con `utf-8`.** Si el archivo lleva BOM —lo pone de más el Bloc de notas de Windows al guardarlo— la primera clave se llamaría `\ufeffDB_HOST`, no se leería, y el fallo sería **silencioso**: se usaría el valor por defecto y todo parecería correcto. Quita el BOM con `utf-8-sig`; nunca con `strip()`, que no lo quita.
+- Nunca muestres ni devuelvas contraseñas: existe `sin_password()` para eso. La pantalla de diagnóstico lo usa a propósito.
 
-## Architecture
+## Flujo de arranque
 
-`main.py` → `gui/*_view.py` (views + `gui/formularios/*_form.py`) → `database/<entidad>.py` → `database/conexion.py` → MySQL.
+`main.py` → `LoginView` → `VentanaPrincipal`. La ventana principal solo se construye con sesión activa; sin ella lanza `PermissionError` a propósito.
 
-Root modules (not in a package):
-- `errores.py` — `ErrorSistema`, `ErrorBaseDatos`, `ErrorValidacion`, `PermisoDenegado`, `traducir_error()` (MySQL errno → Spanish message). Raise these from `database/*.py`; never let `mysql.connector.Error` escape.
-- `sesion.py` — session singleton: `iniciar_sesion(datos)`, `cerrar_sesion()`, `hay_sesion()`, `usuario_actual()`, `rol_actual()`, `obtener_sesion()`.
-- `permisos.py` — `PERMISOS_POR_ROL`, permission constants, `tiene_permiso()`, and the `requiere_permiso()` decorator.
+- `main.py` tiene `if __name__ == "__main__":`.
+- Logout emite `VentanaPrincipal.solicitar_cierre_sesion` (un `Signal`; `pyqtSignal` no existe en PySide6). `main.mostrar_login` oculta y destruye la ventana vieja y vuelve al login. La X cierra la app.
 
-Rules that hold:
-- **All SQL lives in `database/*.py`.** Views and forms never build SQL.
-- `utils/helpers.py` — shared Qt pieces (`crear_tabla`, `celda`, `crear_botones_accion`, `crear_boton_principal`, `crear_boton_secundario`, `crear_titulo`, `crear_campo_contrasena`).
-- `utils/validaciones.py` — every validator returns `(es_valido, mensaje)`; `primer_error(lista)` returns the first message or `None`. Never raise from a validator.
-- `utils/seguridad.py` — PBKDF2-HMAC-SHA256 hashing (`construir_hash`, `verificar_contrasena`). Never import `hashlib` directly elsewhere.
-- `utils/registro.py` — appends tracebacks to `registro_errores.log`. The user never sees a traceback.
-- `gui/vista_base.py` — `VistaBase` is the base of every view. It wraps DB work in `proteger(operacion, *args)` which returns `None` on any failure and shows a readable message. Use `self.proteger(...)` around anything that touches the database; `self.confirmar(titulo, mensaje)` for confirmations.
-- Views take a `puede_gestionar` / `puede_registrar` flag so the sidebar and the action buttons match the role.
-- Only `database/` has an `__init__.py`; `gui/`, `gui/formularios/`, `utils/` rely on implicit namespace packages.
-- `gui/ventana.py` is empty leftover scaffolding; nothing imports it.
-- There is no `reportes.py` on purpose — `ReportesView` composes queries owned by the entity modules.
+## Arquitectura
 
-## Permissions
+`main.py` → `gui/*_view.py` (+ `gui/formularios/*_form.py`) → `database/<entidad>.py` → `database/conexion.py` → MySQL.
 
-Enforced in **two** layers. Hiding a button is not the protection — the decorator in `database/*.py` is.
+Módulos en la raíz:
+- `errores.py` — `ErrorSistema`, `ErrorBaseDatos`, `ErrorValidacion`, `PermisoDenegado`, `traducir_error()` (errno de MySQL → mensaje en español). Los módulos de datos lanzan estos; nunca dejes escapar `mysql.connector.Error`.
+- `sesion.py` — `iniciar_sesion(datos)`, `cerrar_sesion()`, `hay_sesion()`, `usuario_actual()`, `rol_actual()`, `obtener_sesion()`.
+- `permisos.py` — `PERMISOS_POR_ROL`, constantes, `tiene_permiso()`, `requiere_permiso()`.
 
-1. `VentanaPrincipal.SECCIONES` maps `(texto, vista, permiso)`. A view is **not instantiated** if the role lacks the read permission, so the widget does not exist.
-2. `@requiere_permiso(PERMISO)` decorates the mutating functions in `database/*.py` and raises `PermisoDenegado`. Without an active session every permission resolves to `False`.
+`database/`:
+- Un módulo por entidad: toda la escritura va con `@requiere_permiso`.
+- **`reportes.py`** — toda la capa de agregados y estadísticas, para el panel y para la pantalla de reportes. **No existe `dashboard.py`**: se absorbió aquí para que una misma cifra no se calculara de dos maneras.
+- `auditoria.py`, `configuracion.py` — servicios transversales.
+- `esquema.sql` — 7 tablas. Empieza con `DROP DATABASE`: es un script desde cero, nunca sobre datos reales.
+
+`gui/`:
+- **`vista_base.py`** — `VistaBase`. Envuelve la base de datos en `self.proteger(operacion, *args)`, que devuelve `None` si falla y muestra un mensaje legible. `mostrar_mensaje_error(texto)` es para errores sin excepción (un borrado bloqueado por FK, que vuelve como `False`).
+- **`vista_listado.py`** — `VistaListado(VistaBase)`: el esqueleto de los cinco listados (vehículos, marcas, clientes, ventas, usuarios). Antes cada uno repetía ~60 líneas; ahí se colaban las diferencias. Una vista concreta declara `titulo`, `columnas`, `columna_acciones`, `placeholder_busqueda`, `muesaje`/`detalle_vacio`, y define `pintar_fila`, `cargar_datos` y `buscar`. **Al añadir un listado, hereda de aquí, no copies otro.**
+  - Ofrece: `mostrar_de(operacion, *args)` (consulta protegida y vuelca), `mostrar_filas(filas)` (alterna tabla/estado vacío), `marcar_columnas(fila, valores, centrar={...})`, `poner_acciones(fila, widget)`, `leer_valores(fila, n)`, `confirmar_borrado(nombre, extra)`, y `self.acciones_encabezado` para botones extra.
+  - El botón de alta aparece si `puede_gestionar` **y** existe `nuevo_registro()`. `VentasView` sobrescribe `muestra_boton_nuevo()` porque el vendedor registra ventas aunque no pueda gestionarlas.
+- `diagnostico.py` — comprobaciones de solo lectura para el administrador. Nunca escribe.
+- `formularios/` — un `QDialog` por entidad.
+
+`utils/`: `validaciones.py` (todo devuelve `(es_valido, mensaje)`; `primer_error(lista)`), `helpers.py` (componentes), `seguridad.py` (PBKDF2; no importes `hashlib` en otro sitio), `registro.py` (trazas a `registro_errores.log`).
+
+## Permisos
+
+Dos capas. Ocultar un botón no es la protección.
+
+1. `VentanaPrincipal.SECCIONES` es `(texto, vista, permiso)`. Una vista **no se construye** si al rol le falta el permiso de lectura. Son 9 secciones para el administrador, 5 para el vendedor.
+2. `@requiere_permiso(PERMISO)` sobre las funciones que escriben. Sin sesión, todo permiso es `False`.
 
 | | administrador | vendedor |
 |---|---|---|
@@ -54,68 +62,114 @@ Enforced in **two** layers. Hiding a button is not the protection — the decora
 | Registrar ventas | sí | sí |
 | Crear, editar y **borrar** autos / marcas / clientes | sí | **no** |
 | **Borrar** ventas | sí | **no** |
-| Reportes | sí | **no** |
-| Usuarios | sí | **no** |
-| Configuración | sí | **no** |
+| Reportes / Usuarios / Auditoría / Configuración | sí | **no** |
 
-Read functions are intentionally undecorated: both roles may read. To lock a read down, add the decorator — `obtener_usuarios` and `buscar_usuarios` are decorated precisely so a vendedor cannot enumerate accounts.
+- Un intento denegado escribe `ACCESO_DENEGADO` en la auditoría antes de lanzar la excepción.
+- `crear_primer_usuario` va **sin** decorar (aún no hay sesión) y se niega a funcionar si ya hay un administrador activo.
+- Las **lecturas** de auditoría exigen `VER_AUDITORIA`; la **escritura** del rastro no lleva permiso, porque tiene que funcionar durante el login, antes de que exista sesión.
+- Las consultas de `reportes.py` usan dos permisos distintos a propósito: `obtener_resumen`, `obtener_ventas_del_dia/mes`, `obtener_top_vehiculos` y `obtener_ventas_por_cliente` piden `VER_TABLERO` (el vendedor las ve en el panel); las de detalle y métricas piden `VER_REPORTES` (solo admin). **No las unifiques**: se rompería el vendedor.
+- Las lecturas de entidades no llevan decorador: ambos roles pueden leer.
 
-- `crear_primer_usuario` is deliberately **not** decorated (no session exists yet). It refuses if any active administrator already exists, so it cannot be used to add accounts later.
-- `contar_administradores_activos`, `es_administrador` and `hay_usuarios` are left undecorated: they return a count or a bool, no data.
-- Deleting sales is admin-only because it returns the unit to stock and rewrites history.
+## Contraseñas
 
-## Passwords and login
+- `usuarios.password_hash` guarda `sal_hex:hash_hex`. El texto plano no se guarda, no se registra y no se recupera.
+- `autenticar()` devuelve `(True, "", datos)` o `(False, mensaje, None)`; `datos` es `(id, nombre_usuario, nombre_completo, rol)`.
+- Usuario inexistente y contraseña incorrecta dan el **mismo** mensaje, y el caso inexistente verifica un hash señuelo para que el tiempo no revele qué cuentas existen.
+- Bloqueo tras `MAX_INTENTOS = 5` durante `MINUTOS_BLOQUEO = 15` minutos, en `intentos_fallidos` / `bloqueado_hasta`. La contraseña correcta **no** lo salta.
+- Las cuentas nuevas 默认 son `vendedor` (menor privilegio).
+- `eliminar_usuario` devuelve `(True, "")` o `(False, motivo)`; no deja borrar tu propia cuenta ni el último administrador activo. `actualizar_usuario` no deja degradar ni desactivar al último administrador activo.
+- Coste ~0,17 s por verificación (`ITERACIONES = 260000`). Subirlo vale; bajarlo no.
 
-- `usuarios.password_hash` stores `sal_hex:hash_hex`. The plaintext is never stored, never logged and cannot be recovered.
-- `autenticar()` returns `(True, "", datos)` or `(False, mensaje, None)`, where `datos` is `(id, nombre_usuario, nombre_completo, rol)`.
-- Unknown user and wrong password give the **same** message, and the unknown-user path verifies a dummy hash so timing does not reveal which accounts exist.
-- Lockout after `MAX_INTENTOS = 5`, for `MINUTOS_BLOQUEO = 15` minutes, tracked in `intentos_fallidos` / `bloqueado_hasta`. A correct password does **not** bypass it. `UsuariosView.editar_usuario` offers to unlock a blocked account, and setting a new password in the form clears the lock.
-- New accounts default to **`vendedor`** (least privilege). Making someone an administrator is a deliberate choice.
-- `eliminar_usuario` returns `(True, "")` or `(False, motivo)`; it refuses to delete your own account or the last active administrator. `actualizar_usuario` refuses to demote or deactivate the last active administrator.
-- Hash cost is ~0.17 s per verification (`ITERACIONES = 260000`). Raising it is fine; lowering it is not.
+## Auditoría
 
-## Database
+`registrar_accion()` **nunca rompe la operación que la origina**: se traga sus propios errores y devuelve un booleano. Perder una línea del rastro es aceptable; perder una venta no.
 
-- Schema: `database/esquema.sql` creates the database, 5 tables (`marcas`, `autos`, `clientes`, `ventas`, `usuarios`) and 10 seed marcas. It starts with `DROP DATABASE` — a from-scratch script, never run over real data. No migrations exist.
-- Relations: `marcas 1:N autos`, `clientes 1:N ventas`, `autos 1:N ventas`. `ventas.precio` freezes the price at sale time.
-- Normally each function opens a fresh connection, runs one query, closes cursor + connection. Writes `commit()`; reads don't.
-  - **Two deliberate exceptions in `database/ventas.py`:** `registrar_venta` and `eliminar_venta` use `start_transaction()` / `commit()` / `rollback()`.
-  - `registrar_venta` locks the vehicle with `SELECT ... FOR UPDATE`, checks stock, inserts the sale, then decrements.
-  - `eliminar_venta` also returns the unit to stock in the same transaction.
-- `eliminar_marca`, `eliminar_cliente`, `eliminar_auto` return `False` instead of raising when a foreign key blocks the delete. Check the return value.
-- `cliente_duplicado(nombre, apellido, telefono, email, id_usuario=None)` matches on email, or on name + surname + phone together.
-- Search builds its LIKE wildcard in Python (`f"%{texto}%"`) and still passes it as a `%s` param. Keep new queries parameterized; never interpolate input.
+- Las ventas se auditan **después** del `commit()`, para no afirmar ventas revertidas.
+- `usuario_id` es `ON DELETE SET NULL` y `usuario_nombre` es una **copia**: borrar una cuenta no borra su historial.
+- El centinela `SIN_INFORMAR` distingue "el llamador no dijo nada" (usa la sesión) de "el llamador dijo que no hay usuario" (guarda NULL). Un login fallido contra un usuario inexistente va con `usuario_id` NULL, no con el id de quien está sentado delante.
+- `ACCIONES` y `MODULOS` en `database/auditoria.py` son el único sitio donde el código se traduce a texto. Añade códigos ahí, no en línea.
+- `obtener_auditoria()` y `contar_registros()` comparten `_condiciones()`. Si construyesen el filtro por separado, uno contaría cosas distintas del otro.
+- "Vaciar auditoría" pide confirmación doble y escribir `VACIAR`.
 
-## Column order is a cross-layer contract
+## Base de datos
 
-`database/autos.py` selects exactly `autos.id, marcas.nombre, autos.modelo, autos.anio, autos.precio, autos.color, autos.stock`.
+- Relaciones: `marcas 1:N autos`, `clientes 1:N ventas`, `autos 1:N ventas`. `ventas.precio` congela el precio del momento.
+- Cada función abre conexión, hace una consulta y la cierra. Salvo dos excepciones deliberadas en `database/ventas.py`: `registrar_venta` y `eliminar_venta` usan transacción.
+- `registrar_venta` bloquea el vehículo con `SELECT ... FOR UPDATE`, comprueba stock, inserta y descuenta.
+- `eliminar_venta` **devuelve la unidad al stock** en la misma transacción.
+- `eliminar_marca`, `eliminar_cliente` y `eliminar_auto` devuelven `False` en vez de lanzar excepción cuando una FK lo bloquea. Comprueba el retorno.
+- `cliente_duplicado(...)` compara por correo, o por nombre + apellido + teléfono a la vez.
+- `_condiciones_ventas()` en `reportes.py` es la **única** forma de construir el filtro de ventas. Todas las consultas de reportes la usan, para que "por cliente" signifique lo mismo en el conteo, en el importe y en el detalle.
+- `obtener_tablas()` en `gui/diagnostico.py` cruza en Python un `UNION` de conteos con `information_schema`: el nombre de tabla nunca se interpola en el SQL.
+- **`FIRST_DAY()` es de MariaDB y no existe en MySQL.** Para el día 1 del mes usa `DATE_SUB(CURDATE(), INTERVAL (DAYOFMONTH(CURDATE()) - 1) DAY)`.
+- La búsqueda arma el comodín en Python (`f"%{texto}%"`) y lo pasa como `%s`. Nada de interpolar entrada del usuario.
 
-That order is hardcoded in three more places:
-- `AutosView.mostrar_autos` writes each row positionally and puts the action buttons in column **7** via `setCellWidget`.
-- `AutosView.editar_auto` re-reads columns 0–6 and rebuilds a typed 7-tuple.
-- `AutoForm.cargar_datos` unpacks the same 7-tuple with the brand **name** at index 1, matching it against combo text.
+## Orden de columnas: contrato entre capas
 
-Reordering or adding a SELECT column breaks the GUI with no error at the DB layer. The stock queries in `database/autos.py` deliberately reuse these same 7 columns so `ReportesView` can share one display routine.
+`database/autos.py` selecciona exactamente `autos.id, marcas.nombre, autos.modelo, autos.anio, autos.precio, autos.color, autos.stock`.
 
-Other contracts: `obtener_ventas` → `id, fecha, cliente, vehiculo, precio` (last two are `CONCAT` expressions, not ids). `obtener_usuarios` → `id, nombre_usuario, nombre_completo, rol, activo, ultimo_acceso, intentos_fallidos, bloqueado_hasta`.
+Está codificado en tres sitios más:
+- `AutosView.pintar_fila` escribe por posición y pone los botones en la columna **7** con `setCellWidget`.
+- `AutosView.leer_auto` relee las columnas 0–6 y reconstruye la tupla con tipos.
+- `AutoForm.cargar_datos` desempaqueta la misma tupla con la **nombre** de la marca en el índice 1, comparándolo contra el texto del combo.
 
-Views read table cells positionally to rebuild a form's tuple. A row missing an item returns early rather than crashing.
+Reordenar o añadir una columna rompe la interfaz sin error en la capa de datos. Cambia las cuatro a la vez.
 
-## Sales are create-only
+**La columna 4 (precio) se muestra con separador de miles y hay que deshacerlo antes de convertir:** `float(datos[4].replace(",", ""))`. Olvidar el `replace` rompe la edición de cualquier vehículo de más de 999.
 
-A sale is not editable — the row is history. The `Ver` button shows the detail read-only. Correcting a sale means deleting it (which returns the unit to stock) and registering it again.
+Las consultas de stock de `database/autos.py` reutilizan esas mismas 7 columnas para que `ReportesView` comparta el pintado (es de solo lectura, no deshace nada).
 
-## Styling
+Otros contratos: `obtener_ventas` → `id, fecha, cliente, vehiculo, precio` (los dos últimos son `CONCAT`, no ids). `obtener_usuarios` → `id, nombre_usuario, nombre_completo, rol, activo, ultimo_acceso, intentos_fallidos, bloqueado_hasta`.
 
-- One app-wide stylesheet, `gui/estilo.css`, loaded once in `main.py`. Widgets are themed via `setObjectName` + a matching QSS selector; there is no inline styling anywhere.
-- Object names: `titulo`, `subtitulo`, `pie`, `icono`, `nombre_tarjeta`, `cantidad`, `tarjeta`, `sidebar`, `titulo_sidebar`, `boton_menu`, `boton_menu_activo`, `boton_salir`, `bloque_usuario`, `usuario_nombre`, `usuario_rol`, `boton_principal`, `boton_secundario`, `boton_filtro`, `boton_editar`, `boton_eliminar`, `aviso`, `aviso_error`, `filtros`, `campo_login`, `casilla_ver`, `login_icono`, `login_titulo`, `login_subtitulo`, `login_error`, `login_pie`, `estado_conexion`, `estado_ok`, `estado_error`.
-- **Trap:** the bare `QPushButton` rule is styled as a *sidebar* button. Any new button without an `objectName` renders as a nav item. Use `crear_boton_principal` / `crear_boton_secundario`.
-- Changing an `objectName` after the widget exists does not restyle it. Call `style().unpolish(w)` then `style().polish(w)`, as `ventana_principal.marcar_activo` does.
+`leer_valores()` devuelve `None` si falta una celda, en vez de inventar un vacío que reventaría la conversión.
 
-## House style
+## Las ventas no se editan
 
-- Spanish everywhere: identifiers, UI strings, comments.
-- Calls are exploded **one argument per line** with blank lines between statements; sections use ASCII banners (`# =====`, `# -----`). Match it — a normal reformat buries the real change in noise.
-- Import order: project packages first, then PySide6. Do not import inside functions.
-- GUI methods colliding with DB function names are aliased on import (`from database.autos import eliminar_auto as eliminar_auto_db`). Follow that instead of renaming.
-- Row-action buttons capture their index with a default argument: `lambda _, f=fila: self.editar(f)`. `clicked` emits a bool, so the first parameter absorbs it.
+Una venta es histórico. El botón `Ver` muestra el detalle en solo lectura. Corregir una venta es anularla (lo que devuelve la unidad al stock) y volver a registrarla.
+
+## Teclado
+
+- `Escape` ya lo resuelve `QDialog`: cierra con `reject()` sin escribir código.
+- `Return` **no**: `QLineEdit`, `QSpinBox` y `QComboBox` se lo quedan. Por eso cada formulario llama a `conectar_enter_guardar(campos, guardar)`.
+- No lo conectes a un `QComboBox`: `Return` ahí abre y cierra la lista desplegable.
+
+## Búsqueda
+
+`crear_busqueda()` devuelve un contenedor con `.campo` y `.boton` (o el `QLineEdit` suelto con `con_boton=False`). Filtra con `Enter` al momento y solo al dejar de escribir, con 350 ms de retardo (`ESPERA_BUSQUEDA_MS`): sin esa espera cada tecla dispara una consulta. El temporizador cuelga del campo (`.temporizador`) y `_disparar()` lo cancela para no filtrar dos veces.
+
+Vaciar el campo filtra al instante: sin texto no hay nada que filtrar.
+
+## Estilos
+
+- Una sola hoja: `gui/estilo.css`, aplicada con `setObjectName` + selector QSS. Nada de estilos en línea.
+- Paleta documentada al principio del archivo: grises pizarra, azul **solo** para lo principal, rojo **solo** para lo destructivo.
+- Object names: `titulo`, `subtitulo`, `pie`, `etiqueta_filtro`, `icono`, `nombre_tarjeta`, `cantidad`, `tarjeta`, `tile`, `tile_nombre`, `tile_valor`, `metrica`, `metrica_nombre`, `metrica_valor`, `estado_vacio_icono`, `estado_vacio_titulo`, `estado_vacio_detalle`, `filtros`, `sidebar`, `titulo_sidebar`, `boton_menu`, `boton_menu_activo`, `boton_salir`, `bloque_usuario`, `usuario_nombre`, `usuario_rol`, `boton_principal`, `boton_secundario`, `boton_peligro`, `boton_filtro`, `boton_editar`, `boton_eliminar`, `aviso`, `aviso_error`, `estado_conexion`, `estado_ok`, `estado_error`, `login_*`, `campo_login`, `casilla_ver`.
+- **La regla base de `QPushButton` es para la barra lateral.** Un botón sin `objectName` se ve como un elemento de menú. Usa los helpers.
+- Cambiar el `objectName` después no reestila: `style().unpolish(w)` y luego `polish(w)`.
+- **`QLabel { background-color: transparent }` sostiene todo el diseño.** Sin eso, cada etiqueta pinta su propia banda gris sobre las tarjetas.
+- **La altura de fila hay que fijarla.** Qt la calcula desde el texto e ignora `setCellWidget`, así que los botones de 30 px salían cortados. `crear_tabla` pone `setDefaultSectionSize(44)` y `crear_botones_accion` fija el contenedor en 34 px.
+- **Las tablas cortas necesitan `ajustar_alto_tabla(tabla)`.** Con un `setMaximumHeight()` fijo se quedan con barra de desplazamiento y solo enseñan la primera fila.
+- Las etiquetas de error empiezan ocultas (`setVisible(False)`) y se ocultan al limpiarlas, o queda un recuadro rojo vacío.
+- **No dibujes flechas en QSS con bordes:** salen como bloques sólidos. Deja `::down-arrow` al estilo de Qt.
+- No pongas anchos fijos en tablas dentro de paneles estrechos: las columnas centrales se colapsan a unos píxeles. Da más ancho al panel, no a la columna.
+
+## Estilo del código
+
+- Español en todo: identificadores, textos, comentarios.
+- Las llamadas van **un argumento por línea**, con línea en blanco entre sentencias; las secciones llevan marcos ASCII (`# =====`, `# -----`). Respétalo: un reformateo normal esconde el cambio real.
+- Orden de imports: primero los del proyecto, luego PySide6. **No importes dentro de funciones.**
+- Los métodos de GUI que chocan con funciones de datos se(aliasan: `from database.autos import eliminar_auto as eliminar_auto_db`.
+- Los botones de fila capturan su índice por valor por defecto: `lambda _, f=fila: self.editar(f)`. `clicked` emite un booleano y el primer parámetro lo absorbe.
+- Archivos UTF-8 **sin BOM** y con salto de línea final.
+- Compilar no detecta nombres mal escritos dentro de un método: solo fallan al construir el widget. Antes de dar algo por bueno, **constrúyelo**.
+
+## Verificación
+
+No hay suite de tests en el repositorio. Hasta que la haya, comprueba con estas piezas:
+
+- `venv\Scripts\python.exe verificar_instalacion.py` — entorno y conexión.
+- Compilar todos los `.py` y revisar imports sin usar con AST.
+- **Construir cada vista y cada formulario** en `QT_QPA_PLATFORM=offscreen` y navegar por las 9 secciones. Es lo único que detecta un `NameError` de runtime, un import que sobra o un parámetro mal pasado.
+- Parchear `QMessageBox.warning/information/question/critical` antes de construir nada: si no, un error inesperado **cuelga** la comprobación en vez de fallarla. Si una comprobación se queda colgada, busca el `QMessageBox` que nadie parcheó.
+- Para esperar a un `QTimer` hay que procesar eventos (`app.processEvents()` en bucle); `time.sleep` no los deja correr.
+- Capturas sin pantalla: `widget.grab().save(ruta)` tras registrar fuentes del sistema con `QFontDatabase.addApplicationFont()` (`segoeui.ttf`, `segoeuib.ttf`, `arial.ttf`, `seguiemj.ttf`). Sin eso salen cajas en vez de acentos y emojis: es un artefacto del renderizado, no un fallo de la aplicación.

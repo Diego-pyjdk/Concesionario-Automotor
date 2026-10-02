@@ -1,11 +1,3 @@
-from PySide6.QtWidgets import (
-    QVBoxLayout,
-    QHBoxLayout,
-    QLineEdit,
-    QPushButton,
-    QMessageBox
-)
-
 from database.clientes import (
     obtener_clientes,
     buscar_clientes,
@@ -13,225 +5,110 @@ from database.clientes import (
 )
 
 from utils.helpers import (
-    crear_tabla,
-    celda,
-    crear_botones_accion,
-    crear_boton_principal,
-    crear_titulo
+    crear_botones_accion
 )
 
-from gui.vista_base import VistaBase
+from gui.vista_listado import VistaListado
 
 from gui.formularios.cliente_form import ClienteForm
 
 
-class ClientesView(VistaBase):
+class ClientesView(VistaListado):
 
-    def __init__(self, parent=None, puede_gestionar=True):
-        super().__init__(parent)
+    titulo = "Clientes"
 
-        self.puede_gestionar = puede_gestionar
+    columnas = [
+        "ID",
+        "Nombre",
+        "Apellido",
+        "Teléfono",
+        "Email",
+        "Acciones"
+    ]
 
-        self.crear_interfaz()
+    columna_acciones = 5
 
-    def crear_interfaz(self):
+    texto_nuevo = "+ Nuevo cliente"
 
-        layout_principal = QVBoxLayout()
+    placeholder_busqueda = (
+        "Buscar por nombre, apellido, "
+        "teléfono o email..."
+    )
 
-        layout_principal.setContentsMargins(
-            30, 25, 30, 25
-        )
+    mensaje_vacio = "Todavía no hay clientes"
 
-        layout_principal.setSpacing(20)
+    detalle_vacio = (
+        "Registra un cliente para poder "
+        "asociarlo a una venta."
+    )
 
-        self.setLayout(layout_principal)
+    def cargar_datos(self):
 
-        # ------------------------------
-        # ENCABEZADO
-        # ------------------------------
+        self.mostrar_de(obtener_clientes)
 
-        encabezado = QHBoxLayout()
+    def pintar_fila(self, fila, cliente):
 
-        encabezado.addWidget(
-            crear_titulo("Clientes")
-        )
+        (
+            id_cliente,
+            nombre,
+            apellido,
+            telefono,
+            email
+        ) = cliente
 
-        encabezado.addStretch()
-
-        if self.puede_gestionar:
-
-            encabezado.addWidget(
-                crear_boton_principal(
-                    "+ Nuevo cliente",
-                    self.nuevo_cliente
-                )
-            )
-
-        layout_principal.addLayout(encabezado)
-
-        # ------------------------------
-        # BÚSQUEDA
-        # ------------------------------
-
-        busqueda_layout = QHBoxLayout()
-
-        self.campo_busqueda = QLineEdit()
-
-        self.campo_busqueda.setPlaceholderText(
-            "Buscar por nombre, apellido, "
-            "teléfono o email..."
-        )
-
-        self.campo_busqueda.setFixedHeight(40)
-
-        self.campo_busqueda.returnPressed.connect(
-            self.buscar
-        )
-
-        boton_buscar = QPushButton("🔍 Buscar")
-
-        boton_buscar.setObjectName(
-            "boton_filtro"
-        )
-
-        boton_buscar.setFixedHeight(40)
-
-        boton_buscar.clicked.connect(
-            self.buscar
-        )
-
-        busqueda_layout.addWidget(
-            self.campo_busqueda
-        )
-
-        busqueda_layout.addWidget(
-            boton_buscar
-        )
-
-        layout_principal.addLayout(busqueda_layout)
-
-        # ------------------------------
-        # TABLA
-        # ------------------------------
-
-        self.tabla = crear_tabla(
+        self.marcar_columnas(
+            fila,
             [
-                "ID",
-                "Nombre",
-                "Apellido",
-                "Teléfono",
-                "Email",
-                "Acciones"
+                id_cliente,
+                nombre,
+                apellido,
+                telefono or "",
+                email or ""
             ],
-            columna_acciones=5,
-            ancho_acciones=148
+            centrar={0}
         )
 
-        layout_principal.addWidget(self.tabla)
+        botones = crear_botones_accion(
+            lambda _, f=fila: self.editar_cliente(f),
+            lambda _, f=fila: self.eliminar_cliente(f),
+            mostrar_eliminar=self.puede_gestionar
+        )
 
-        # ------------------------------
-        # CARGAR
-        # ------------------------------
+        self.poner_acciones(fila, botones)
 
-        self.cargar_datos()
+    def buscar(self, texto):
+
+        if not texto:
+
+            self.cargar_datos()
+
+            return
+
+        self.mostrar_de(buscar_clientes, texto)
 
     # =============================
-    # NUEVO CLIENTE
+    # ALTA
     # =============================
 
-    def nuevo_cliente(self):
+    def nuevo_registro(self):
 
         formulario = ClienteForm(self)
 
         if formulario.exec():
+
             self.cargar_datos()
 
     # =============================
-    # CARGAR CLIENTES
-    # =============================
-
-    def cargar_datos(self):
-
-        self.mostrar_clientes(
-            obtener_clientes()
-        )
-
-    # =============================
-    # MOSTRAR CLIENTES
-    # =============================
-
-    def mostrar_clientes(self, clientes):
-
-        self.tabla.setRowCount(len(clientes))
-
-        for fila, cliente in enumerate(clientes):
-
-            (
-                id_cliente,
-                nombre,
-                apellido,
-                telefono,
-                email
-            ) = cliente
-
-            self.tabla.setItem(
-                fila,
-                0,
-                celda(id_cliente, centrar=True)
-            )
-
-            self.tabla.setItem(
-                fila,
-                1,
-                celda(nombre)
-            )
-
-            self.tabla.setItem(
-                fila,
-                2,
-                celda(apellido)
-            )
-
-            self.tabla.setItem(
-                fila,
-                3,
-                celda(telefono or "")
-            )
-
-            self.tabla.setItem(
-                fila,
-                4,
-                celda(email or "")
-            )
-
-            botones = crear_botones_accion(
-                lambda _, f=fila: self.editar_cliente(f),
-                lambda _, f=fila: self.eliminar_cliente(f),
-                mostrar_eliminar=self.puede_gestionar
-            )
-
-            self.tabla.setCellWidget(
-                fila,
-                5,
-                botones
-            )
-
-    # =============================
-    # EDITAR CLIENTE
+    # EDICIÓN
     # =============================
 
     def editar_cliente(self, fila):
 
-        valores = []
+        valores = self.leer_valores(fila, 5)
 
-        for columna in range(5):
+        if valores is None:
 
-            item = self.tabla.item(fila, columna)
-
-            if item is None:
-                return
-
-            valores.append(item.text())
+            return
 
         (
             id_cliente,
@@ -249,45 +126,53 @@ class ClientesView(VistaBase):
             email or None
         )
 
-        formulario = ClienteForm(
-            self,
-            cliente
-        )
+        formulario = ClienteForm(self, cliente)
 
         if formulario.exec():
+
             self.cargar_datos()
 
     # =============================
-    # ELIMINAR CLIENTE
+    # BORRADO
     # =============================
 
     def eliminar_cliente(self, fila):
 
         item = self.tabla.item(fila, 0)
 
-        if not item:
+        item_nombre = self.tabla.item(fila, 1)
+
+        if not item or not item_nombre:
+
             return
 
         id_cliente = int(item.text())
 
-        respuesta = QMessageBox.question(
-            self,
-            "Eliminar cliente",
-            "¿Estás seguro de que deseas "
-            "eliminar este cliente?",
-            QMessageBox.Yes | QMessageBox.No
+        nombre = (
+            f"{item_nombre.text()} "
+            f"{(self.tabla.item(fila, 2) or item_nombre).text()}"
         )
 
-        if respuesta != QMessageBox.Yes:
+        if not self.confirmar_borrado(
+            nombre.strip(),
+            "Si tiene ventas registradas no se "
+            "podrá eliminar."
+        ):
+
             return
 
-        # Un cliente con ventas no se puede
-        # eliminar: se perdería el historial.
+        resultado = self.proteger(
+            eliminar_cliente_db,
+            id_cliente
+        )
 
-        if not eliminar_cliente_db(id_cliente):
-            QMessageBox.warning(
-                self,
-                "No se puede eliminar",
+        if resultado is None:
+
+            return
+
+        if not resultado:
+
+            self.mostrar_mensaje_error(
                 "El cliente tiene ventas registradas. "
                 "No se puede eliminar para no "
                 "perder el historial."
@@ -295,20 +180,9 @@ class ClientesView(VistaBase):
 
             return
 
-        self.cargar_datos()
-
-    # =============================
-    # BUSCAR CLIENTE
-    # =============================
-
-    def buscar(self):
-
-        texto = self.campo_busqueda.text().strip()
-
-        if not texto:
-            self.cargar_datos()
-            return
-
-        self.mostrar_clientes(
-            buscar_clientes(texto)
+        self.mostrar_exito(
+            f"El cliente '{nombre.strip()}' "
+            "se eliminó correctamente."
         )
+
+        self.cargar_datos()

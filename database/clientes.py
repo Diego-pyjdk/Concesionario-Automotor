@@ -1,5 +1,7 @@
 from database.conexion import obtener_conexion
 
+from database.auditoria import registrar_accion
+
 from permisos import (
     requiere_permiso,
     GESTIONAR_CLIENTES
@@ -249,6 +251,12 @@ def insertar_cliente(
     cursor.close()
     conexion.close()
 
+    registrar_accion(
+        "clientes",
+        "CREAR",
+        f"Cliente {nombre} {apellido} registrado"
+    )
+
     return id_cliente
 
 
@@ -293,6 +301,13 @@ def actualizar_cliente(
     cursor.close()
     conexion.close()
 
+    registrar_accion(
+        "clientes",
+        "MODIFICAR",
+        f"Cliente {id_cliente} actualizado "
+        f"({nombre} {apellido})"
+    )
+
 
 # =============================
 # ELIMINAR
@@ -325,5 +340,11 @@ def eliminar_cliente(id_cliente):
 
     cursor.close()
     conexion.close()
+
+    registrar_accion(
+        "clientes",
+        "ELIMINAR",
+        f"Cliente {id_cliente} eliminado"
+    )
 
     return True

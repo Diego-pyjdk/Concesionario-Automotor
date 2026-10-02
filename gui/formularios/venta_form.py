@@ -147,6 +147,10 @@ class VentaForm(QDialog):
             self.actualizar_precio
         )
 
+        # Return registra la venta. No se conecta
+        # al combo de cliente: allí Return abre y
+        # cierra la lista desplegable.
+
     def cargar_listas(self):
 
         clientes = obtener_clientes_para_venta()

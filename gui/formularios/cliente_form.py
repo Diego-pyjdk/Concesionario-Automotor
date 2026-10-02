@@ -21,7 +21,8 @@ from utils.validaciones import (
 
 from utils.helpers import (
     crear_boton_principal,
-    crear_boton_secundario
+    crear_boton_secundario,
+    conectar_enter_guardar
 )
 
 
@@ -93,6 +94,19 @@ class ClienteForm(QDialog):
         )
 
         layout_principal.addLayout(botones)
+
+        # Return guarda desde cualquiera de los
+        # cuatro campos.
+
+        conectar_enter_guardar(
+            [
+                self.campo_nombre,
+                self.campo_apellido,
+                self.campo_telefono,
+                self.campo_email
+            ],
+            self.guardar
+        )
 
         self.campo_nombre.setFocus()
 

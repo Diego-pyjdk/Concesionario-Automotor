@@ -62,6 +62,8 @@ VER_REPORTES = "ver_reportes"
 
 GESTIONAR_USUARIOS = "gestionar_usuarios"
 
+VER_AUDITORIA = "ver_auditoria"
+
 VER_CONFIGURACION = "ver_configuracion"
 GESTIONAR_CONFIGURACION = "gestionar_configuracion"
 
@@ -85,6 +87,7 @@ PERMISOS_POR_ROL = {
         GESTIONAR_VENTAS,
         VER_REPORTES,
         GESTIONAR_USUARIOS,
+        VER_AUDITORIA,
         VER_CONFIGURACION,
         GESTIONAR_CONFIGURACION
     },
@@ -160,9 +163,10 @@ def requiere_permiso(permiso):
     """
     Protege una función de database/*.py.
 
-    Sin sesión activa o sin el permiso, lanza
-    PermisoDenegado antes de tocar la base de
-    datos.
+    Sin sesión activa o sin el permiso, deja una
+    entrada ACCESO_DENEGADO en la auditoría y
+    lanza PermisoDenegado antes de tocar la base
+    de datos.
     """
 
     def envoltorio(funcion):
@@ -172,6 +176,11 @@ def requiere_permiso(permiso):
 
             if not tiene_permiso(permiso):
 
+                registrar_intento(
+                    permiso,
+                    funcion.__name__
+                )
+
                 raise PermisoDenegado(permiso)
 
             return funcion(*args, **kwargs)
@@ -179,3 +188,26 @@ def requiere_permiso(permiso):
         return protegida
 
     return envoltorio
+
+
+def registrar_intento(permiso, operacion):
+    """
+    Deja constancia de un intento no autorizado.
+
+    El import es diferido a propósito: el módulo
+    de auditoría usa la sesión, y cargarlo en
+    el encabezado cerraría un círculo.
+    """
+
+    from database.auditoria import registrar_accion
+
+    sesion = modulo_sesion.obtener_sesion()
+
+    rol = sesion.rol or "sin sesión"
+
+    registrar_accion(
+        "acceso",
+        "ACCESO_DENEGADO",
+        f"{rol} intentó {operacion} "
+        f"(requiere {permiso})"
+    )

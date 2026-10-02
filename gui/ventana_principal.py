@@ -27,10 +27,13 @@ from permisos import (
     GESTIONAR_VENTAS,
     VER_REPORTES,
     GESTIONAR_USUARIOS,
+    VER_AUDITORIA,
     VER_CONFIGURACION
 )
 
 from database.configuracion import NOMBRE_SISTEMA
+
+from database.auditoria import registrar_logout
 
 from gui.dashboard_view import DashboardView
 from gui.autos_view import AutosView
@@ -39,6 +42,7 @@ from gui.clientes_view import ClientesView
 from gui.ventas_view import VentasView
 from gui.reportes_view import ReportesView
 from gui.usuarios_view import UsuariosView
+from gui.auditoria_view import AuditoriaView
 from gui.configuracion_view import ConfiguracionView
 
 
@@ -63,6 +67,7 @@ class VentanaPrincipal(QMainWindow):
         ("💰  Ventas", VentasView, VER_VENTAS),
         ("📊  Reportes", ReportesView, VER_REPORTES),
         ("👥  Usuarios", UsuariosView, GESTIONAR_USUARIOS),
+        ("🛡  Auditoría", AuditoriaView, VER_AUDITORIA),
         ("⚙  Configuración",
          ConfiguracionView,
          VER_CONFIGURACION)
@@ -373,6 +378,12 @@ class VentanaPrincipal(QMainWindow):
 
         if respuesta != QMessageBox.Yes:
             return
+
+        # Se registra ANTES de destruir la sesión:
+        # después ya no habría usuario al que
+        # atribuírselo.
+
+        registrar_logout()
 
         # Destruir la sesión antes de cerrar la
         # ventana: si algo queda visible, ya no

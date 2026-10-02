@@ -4,133 +4,100 @@ from database.autos import (
     eliminar_auto as eliminar_auto_db
 )
 
-from PySide6.QtWidgets import (
-    QVBoxLayout,
-    QHBoxLayout,
-    QLineEdit,
-    QPushButton,
-    QMessageBox
-)
-
 from utils.helpers import (
-    crear_tabla,
-    celda,
-    crear_botones_accion,
-    crear_boton_principal,
-    crear_titulo
+    crear_botones_accion
 )
 
-from gui.vista_base import VistaBase
+from gui.vista_listado import VistaListado
 
 from gui.formularios.auto_form import AutoForm
 
 
-class AutosView(VistaBase):
+class AutosView(VistaListado):
 
-    def __init__(self, parent=None, puede_gestionar=True):
-        super().__init__(parent)
+    titulo = "Vehículos"
 
-        self.puede_gestionar = puede_gestionar
+    columnas = [
+        "ID",
+        "Marca",
+        "Modelo",
+        "Año",
+        "Precio",
+        "Color",
+        "Stock",
+        "Acciones"
+    ]
 
-        self.crear_interfaz()
+    columna_acciones = 7
 
-    def crear_interfaz(self):
+    texto_nuevo = "+ Nuevo vehículo"
 
-        layout_principal = QVBoxLayout()
-        layout_principal.setContentsMargins(30, 25, 30, 25)
-        layout_principal.setSpacing(20)
+    placeholder_busqueda = "Buscar por modelo, marca..."
 
-        self.setLayout(layout_principal)
+    mensaje_vacio = "Todavía no hay vehículos"
 
-        # =============================
-        # ENCABEZADO
-        # =============================
+    detalle_vacio = (
+        "Necesitas al menos una marca para "
+        "poder registrar un vehículo."
+    )
 
-        encabezado = QHBoxLayout()
+    def cargar_datos(self):
 
-        encabezado.addWidget(crear_titulo("Vehículos"))
+        self.mostrar_de(obtener_autos)
 
-        encabezado.addStretch()
+    def pintar_fila(self, fila, auto):
 
-        # Un vendedor solo consulta: el botón
-        # no aparece. La protección real está en
-        # database/autos.py.
+        (
+            id_auto,
+            marca,
+            modelo,
+            anio,
+            precio,
+            color,
+            stock
+        ) = auto
 
-        if self.puede_gestionar:
+        # El precio se muestra con separador de
+        # miles. leer_auto() lo deshace antes de
+        # convertirlo.
 
-            encabezado.addWidget(
-                crear_boton_principal(
-                    "+ Nuevo vehículo",
-                    self.nuevo_auto
-                )
-            )
-
-        layout_principal.addLayout(encabezado)
-
-        # =============================
-        # BÚSQUEDA
-        # =============================
-
-        busqueda_layout = QHBoxLayout()
-
-        self.campo_busqueda = QLineEdit()
-
-        self.campo_busqueda.setPlaceholderText(
-            "Buscar por modelo, marca..."
-        )
-
-        self.campo_busqueda.setFixedHeight(40)
-
-        self.campo_busqueda.returnPressed.connect(
-            self.buscar
-        )
-
-        boton_buscar = QPushButton("🔍 Buscar")
-
-        boton_buscar.setObjectName("boton_filtro")
-
-        boton_buscar.setFixedHeight(40)
-
-        boton_buscar.clicked.connect(self.buscar)
-
-        busqueda_layout.addWidget(self.campo_busqueda)
-        busqueda_layout.addWidget(boton_buscar)
-
-        layout_principal.addLayout(busqueda_layout)
-
-        # =============================
-        # TABLA
-        # =============================
-        # El orden de estas 7 columnas es el
-        # contrato con database/autos.py: cada
-        # valor se escribe por posición.
-        # =============================
-
-        self.tabla = crear_tabla(
+        self.marcar_columnas(
+            fila,
             [
-                "ID",
-                "Marca",
-                "Modelo",
-                "Año",
-                "Precio",
-                "Color",
-                "Stock",
-                "Acciones"
+                id_auto,
+                marca,
+                modelo,
+                anio,
+                f"{float(precio):,.2f}",
+                color,
+                stock
             ],
-            columna_acciones=7,
-            ancho_acciones=148
+            centrar={0, 3, 6}
         )
 
-        layout_principal.addWidget(self.tabla)
+        botones = crear_botones_accion(
+            lambda _, f=fila: self.editar_auto(f),
+            lambda _, f=fila: self.eliminar_auto(f),
+            mostrar_eliminar=self.puede_gestionar
+        )
 
-        # Cargar datos desde MySQL
-        self.cargar_datos()
+        self.poner_acciones(fila, botones)
+
+    def buscar(self, texto):
+
+        if not texto:
+
+            self.cargar_datos()
+
+            return
+
+        self.mostrar_de(buscar_autos, texto)
 
     # =============================
-    # NUEVO VEHÍCULO
+    # ALTA
     # =============================
 
-    def nuevo_auto(self):
+    def nuevo_registro(self):
 
         formulario = AutoForm(self)
 
@@ -139,125 +106,81 @@ class AutosView(VistaBase):
             self.cargar_datos()
 
     # =============================
-    # CARGAR VEHÍCULOS
+    # EDICIÓN
     # =============================
 
-    def cargar_datos(self):
+    def leer_auto(self, fila):
+        """
+        Reconstruye el registro con los tipos que
+        espera AutoForm.
+        """
 
-        autos = obtener_autos()
+        datos = self.leer_valores(fila, 7)
 
-        self.mostrar_autos(autos)
+        if datos is None:
 
-    # =============================
-    # MOSTRAR VEHÍCULOS
-    # =============================
+            return None
 
-    def mostrar_autos(self, autos):
-
-        self.tabla.setRowCount(len(autos))
-
-        for fila, auto in enumerate(autos):
-
-            # -------------------------
-            # DATOS
-            # -------------------------
-
-            for columna, dato in enumerate(auto):
-
-                # Centrar ID, Año y Stock
-                centrar = columna in [0, 3, 6]
-
-                self.tabla.setItem(
-                    fila,
-                    columna,
-                    celda(dato, centrar=centrar)
-                )
-
-            # -------------------------
-            # BOTONES DE ACCIONES
-            # -------------------------
-
-            botones = crear_botones_accion(
-                lambda _, f=fila: self.editar_auto(f),
-                lambda _, f=fila: self.eliminar_auto(f),
-                mostrar_eliminar=self.puede_gestionar
-            )
-
-            # Colocar botones en la tabla
-            self.tabla.setCellWidget(fila, 7, botones)
-
-    # =============================
-    # EDITAR VEHÍCULO
-    # =============================
-
-    def editar_auto(self, fila):
-
-        datos = []
-
-        # Obtener los datos de la fila
-        for columna in range(7):
-
-            item = self.tabla.item(fila, columna)
-
-            if item is None:
-
-                return
-
-            datos.append(item.text())
-
-        # Convertir los datos a sus tipos
-        # correspondientes
-
-        auto = (
+        return (
             int(datos[0]),
             datos[1],
             datos[2],
             int(datos[3]),
-            float(datos[4]),
+            float(datos[4].replace(",", "")),
             datos[5],
             int(datos[6])
         )
 
-        # Abrir formulario de edición
+    def editar_auto(self, fila):
+
+        auto = self.leer_auto(fila)
+
+        if auto is None:
+
+            return
 
         formulario = AutoForm(self, auto)
 
-        # Si guardó los cambios
         if formulario.exec():
 
             self.cargar_datos()
 
     # =============================
-    # ELIMINAR VEHÍCULO
+    # BORRADO
     # =============================
 
     def eliminar_auto(self, fila):
 
         item = self.tabla.item(fila, 0)
 
-        if not item:
+        item_modelo = self.tabla.item(fila, 2)
+
+        if not item or not item_modelo:
+
             return
 
         id_auto = int(item.text())
 
-        respuesta = QMessageBox.question(
-            self,
-            "Eliminar vehículo",
-            "¿Estás seguro de que deseas eliminar este vehículo?",
-            QMessageBox.Yes | QMessageBox.No
-        )
+        if not self.confirmar_borrado(
+            item_modelo.text(),
+            "Si tiene ventas registradas no se "
+            "podrá eliminar."
+        ):
 
-        if respuesta != QMessageBox.Yes:
             return
 
-        # Un vehículo con ventas no se puede
-        # eliminar: se perdería el historial.
+        resultado = self.proteger(
+            eliminar_auto_db,
+            id_auto
+        )
 
-        if not eliminar_auto_db(id_auto):
+        if resultado is None:
 
-            QMessageBox.warning(
-                self,
-                "No se puede eliminar",
+            return
+
+        if not resultado:
+
+            self.mostrar_mensaje_error(
                 "El vehículo tiene ventas registradas. "
                 "No se puede eliminar para no perder "
                 "el historial."
@@ -265,27 +188,9 @@ class AutosView(VistaBase):
 
             return
 
+        self.mostrar_exito(
+            f"El vehículo '{item_modelo.text()}' "
+            "se eliminó correctamente."
+        )
+
         self.cargar_datos()
-
-    # =============================
-    # BUSCAR VEHÍCULO
-    # =============================
-
-    def buscar(self):
-
-        texto = self.campo_busqueda.text().strip()
-
-        # Si está vacío, mostrar todos
-        if not texto:
-
-            self.cargar_datos()
-
-            return
-
-        # Buscar en MySQL
-
-        autos = buscar_autos(texto)
-
-        # Mostrar resultados
-
-        self.mostrar_autos(autos)

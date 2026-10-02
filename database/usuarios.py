@@ -17,6 +17,11 @@ import mysql.connector
 
 from database.conexion import obtener_conexion
 
+from database.auditoria import (
+    registrar_accion,
+    registrar_login
+)
+
 from utils.seguridad import (
     construir_hash,
     verificar_contrasena,
@@ -96,6 +101,11 @@ def autenticar(nombre_usuario, contrasena):
                 hash_para_placeholder()
             )
 
+            registrar_login(
+                nombre_usuario,
+                False
+            )
+
             return (
                 False,
                 "Usuario o contraseña incorrectos.",
@@ -116,6 +126,13 @@ def autenticar(nombre_usuario, contrasena):
 
             if minutos > 0:
 
+                registrar_login(
+                    nombre_usuario,
+                    False,
+                    id_usuario=usuario["id"],
+                    motivo="bloqueado"
+                )
+
                 return (
                     False,
                     "La cuenta está bloqueada por "
@@ -129,6 +146,12 @@ def autenticar(nombre_usuario, contrasena):
         # ------------------------------
 
         if not usuario["activo"]:
+
+            registrar_login(
+                nombre_usuario,
+                False,
+                id_usuario=usuario["id"]
+            )
 
             return (
                 False,
@@ -195,6 +218,12 @@ def autenticar(nombre_usuario, contrasena):
             usuario["nombre_usuario"],
             usuario["nombre_completo"],
             usuario["rol"]
+        )
+
+        registrar_login(
+            usuario["nombre_usuario"],
+            True,
+            id_usuario=usuario["id"]
         )
 
         return True, "", datos
@@ -304,6 +333,12 @@ def reiniciar_bloqueo(id_usuario):
 
     cursor.close()
     conexion.close()
+
+    registrar_accion(
+        "usuarios",
+        "DESBLOQUEO",
+        f"Cuenta {id_usuario} desbloqueada"
+    )
 
 
 # ==========================================
@@ -615,6 +650,13 @@ def insertar_usuario(
     cursor.close()
     conexion.close()
 
+    registrar_accion(
+        "usuarios",
+        "CREAR",
+        f"Usuario '{nombre_usuario}' creado "
+        f"con rol {rol}"
+    )
+
     return id_usuario
 
 
@@ -707,6 +749,21 @@ def actualizar_usuario(
     cursor.close()
     conexion.close()
 
+    detalles = [f"rol {rol}"]
+
+    if not activo:
+        detalles.append("desactivado")
+
+    if contrasena:
+        detalles.append("contraseña restablecida")
+
+    registrar_accion(
+        "usuarios",
+        "MODIFICAR",
+        f"Usuario '{nombre_usuario}' actualizado: "
+        + ", ".join(detalles)
+    )
+
     return True
 
 
@@ -739,6 +796,13 @@ def cambiar_contrasena(id_usuario, contrasena):
 
     cursor.close()
     conexion.close()
+
+    registrar_accion(
+        "usuarios",
+        "MODIFICAR",
+        f"Contraseña del usuario {id_usuario} "
+        "restablecida y bloqueo limpiado"
+    )
 
 
 # ==========================================
@@ -792,5 +856,11 @@ def eliminar_usuario(id_usuario):
 
     cursor.close()
     conexion.close()
+
+    registrar_accion(
+        "usuarios",
+        "ELIMINAR",
+        f"Usuario {id_usuario} eliminado"
+    )
 
     return True, ""

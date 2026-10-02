@@ -13,24 +13,38 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QCheckBox,
     QHBoxLayout,
+    QVBoxLayout,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QHeaderView
 )
 
-from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
+
+from PySide6.QtCore import Qt, QTimer
 
 
 # ==========================================
 # TABLA
 # ==========================================
 
-def crear_tabla(columnas, columna_acciones=None, ancho_acciones=148):
+def crear_tabla(
+    columnas,
+    columna_acciones=None,
+    ancho_acciones=148,
+    anchos_fijos=None
+):
     """
     Crea una tabla con la configuración estándar
     de la aplicación: columnas elásticas, sin
     edición directa y filas alternadas.
+
+    anchos_fijos es un dict {columna: ancho} para
+    las columnas que no deben repartirse el
+    espacio (fechas, importes). Sin esto, Stretch
+    las divide a partes iguales y el texto se
+    corta en unas y sobra en otras.
     """
 
     tabla = QTableWidget()
@@ -43,6 +57,17 @@ def crear_tabla(columnas, columna_acciones=None, ancho_acciones=148):
         QHeaderView.Stretch
     )
 
+    if anchos_fijos:
+
+        for indice, ancho in anchos_fijos.items():
+
+            tabla.horizontalHeader().setSectionResizeMode(
+                indice,
+                QHeaderView.Fixed
+            )
+
+            tabla.setColumnWidth(indice, ancho)
+
     if columna_acciones is not None:
         tabla.horizontalHeader().setSectionResizeMode(
             columna_acciones,
@@ -54,8 +79,33 @@ def crear_tabla(columnas, columna_acciones=None, ancho_acciones=148):
             ancho_acciones
         )
 
+    # La columna de números de fila estorba:
+    # todas las tablas tienen su propia columna
+    # ID, así que sobra un índice duplicado.
+
+    tabla.verticalHeader().setVisible(False)
+
+    # Las tablas no se ordenan con el ratón, así
+    # que el indicador de orden solo añade ruido.
+
+    tabla.horizontalHeader().setSortIndicatorShown(
+        False
+    )
+
+    # La altura por defecto la calcula Qt a
+    # partir del texto, e ignora los widgets que
+    # se incrustan en las celdas: los botones
+    # Editar/Eliminar salían cortados. 44 px
+    # deja sitio para un botón de 30 px con su
+    # margen.
+    tabla.verticalHeader().setDefaultSectionSize(44)
+
     tabla.setSelectionBehavior(
         QTableWidget.SelectRows
+    )
+
+    tabla.setSelectionMode(
+        QTableWidget.SingleSelection
     )
 
     tabla.setEditTriggers(
@@ -64,19 +114,54 @@ def crear_tabla(columnas, columna_acciones=None, ancho_acciones=148):
 
     tabla.setAlternatingRowColors(True)
 
+    tabla.setShowGrid(False)
+
     return tabla
 
 
-def celda(texto, centrar=False):
+# ==========================================
+# TONOS DE CELDA
+# ==========================================
+# Una QTableWidgetItem no admite objectName, así
+# que el color va como fondo. Todos los tonos
+# viven aquí para no repetir códigos de color
+# por las vistas.
+# ==========================================
+
+TONOS_CELDA = {
+    "tono_ok": "#dcfce7",
+    "tono_fuerte_ok": "#16a34a",
+    "tono_info": "#dbeafe",
+    "tono_aviso": "#fef3c7",
+    "tono_peligro": "#fee2e2"
+}
+
+
+def celda(texto, centrar=False, objeto=None):
     """
     Crea un item de tabla a partir de un valor
     de la base de datos.
+
+    objeto es el nombre de un tono (ver
+    TONOS_CELDA) para pintar esa celda. Se usa
+    en la auditoría.
     """
 
     item = QTableWidgetItem(str(texto))
 
     if centrar:
         item.setTextAlignment(Qt.AlignCenter)
+
+    if objeto in TONOS_CELDA:
+
+        fondo = QColor(TONOS_CELDA[objeto])
+
+        item.setBackground(fondo)
+
+        if objeto == "tono_fuerte_ok":
+            item.setForeground(
+                QColor("#ffffff")
+            )
 
     return item
 
@@ -111,6 +196,13 @@ def crear_botones_accion(
     """
 
     contenedor = QWidget()
+
+    # Sin altura fija, Qt encoge el contenedor
+    # hasta el alto del texto de la celda (unos
+    # 25 px) y los botones de 30 px quedan
+    # cortados a media altura.
+
+    contenedor.setFixedHeight(34)
 
     acciones = QHBoxLayout(contenedor)
 
@@ -208,6 +300,30 @@ def crear_boton_principal(texto, al_hacer_click, altura=40):
     return boton
 
 
+def crear_boton_peligro(texto, al_hacer_click, altura=40):
+    """
+    Acción destructiva: borrar, anular, purgar.
+
+    Se distingue del principal a propósito: un
+    botón rojo en la misma pantalla que uno azul
+    hace evidente cuál destruye datos.
+    """
+
+    boton = QPushButton(texto)
+
+    boton.setObjectName(
+        "boton_peligro"
+    )
+
+    boton.setFixedHeight(altura)
+
+    boton.clicked.connect(
+        al_hacer_click
+    )
+
+    return boton
+
+
 def crear_titulo(texto):
     """
     Título de sección dentro de una vista.
@@ -220,6 +336,223 @@ def crear_titulo(texto):
     )
 
     return titulo
+
+
+# ==========================================
+# BÚSQUEDA
+# ==========================================
+# Tiempo que hay que dejar de escribir antes de
+# filtrar. Sin esta espera cada tecla dispara
+# una consulta a MySQL.
+# ==========================================
+
+ESPERA_BUSQUEDA_MS = 350
+
+
+def ajustar_alto_tabla(tabla, maximo=340):
+    """
+    Ajusta la altura de una tabla al número de
+    filas que tiene.
+
+    Sin esto, una tabla con dos filas dentro de
+    un setMaximumHeight() fijo se queda con
+    una barra de desplazamiento y solo enseña
+    la primera fila.
+    """
+
+    filas = tabla.rowCount()
+
+    cabecera = tabla.horizontalHeader().height()
+
+    if filas == 0:
+
+        tabla.setFixedHeight(cabecera + 8)
+
+        return
+
+    alto_fila = tabla.rowHeight(0)
+
+    tabla.setFixedHeight(
+        min(cabecera + filas * alto_fila + 4, maximo)
+    )
+
+
+def crear_busqueda(placeholder, al_buscar, con_boton=True):
+    """
+    Campo de búsqueda con dos comportamientos:
+
+      - Enter filsa en el acto
+      - al dejar de escribir filtra solo
+
+    Devuelve un contenedor con .campo y .boton
+    (o el QLineEdit suelto si con_boton=False).
+    El temporizador cuelga del campo para que
+    quien lo use no tenga que acordarse de
+    pararlo.
+    """
+
+    campo = QLineEdit()
+
+    campo.setPlaceholderText(placeholder)
+
+    campo.setClearButtonEnabled(True)
+
+    campo.setFixedHeight(40)
+
+    temporizador = QTimer(campo)
+
+    temporizador.setSingleShot(True)
+
+    temporizador.setInterval(ESPERA_BUSQUEDA_MS)
+
+    temporizador.timeout.connect(
+        lambda: _disparar(campo, al_buscar)
+    )
+
+    campo.returnPressed.connect(
+        lambda: _disparar(campo, al_buscar)
+    )
+
+    campo.textChanged.connect(
+        lambda texto: _al_teclear(campo, texto, temporizador)
+    )
+
+    campo.temporizador = temporizador
+
+    if not con_boton:
+
+        return campo
+
+    contenedor = QWidget()
+
+    layout = QHBoxLayout(contenedor)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(10)
+
+    boton = QPushButton("🔍 Buscar")
+
+    boton.setObjectName("boton_filtro")
+
+    boton.setFixedHeight(40)
+
+    boton.clicked.connect(
+        lambda: _disparar(campo, al_buscar)
+    )
+
+    layout.addWidget(campo)
+    layout.addWidget(boton)
+
+    contenedor.campo = campo
+    contenedor.boton = boton
+
+    return contenedor
+
+
+def _al_teclear(campo, texto, temporizador):
+    """
+    Vaciar el filtro no espera: sin texto no hay
+    nada que filtrar, así que va de inmediato.
+    """
+
+    if not texto:
+        return
+
+    temporizador.start()
+
+
+def _disparar(campo, al_buscar):
+    """
+    Filtra ya y cancela el filtrado automático
+    pendiente, para no consultar dos veces por la
+    misma pulsación.
+    """
+
+    temporizador = getattr(campo, "temporizador", None)
+
+    if temporizador is not None:
+        temporizador.stop()
+
+    al_buscar(campo.text().strip())
+
+
+# ==========================================
+# ESTADO VACÍO
+# ==========================================
+
+def crear_estado_vacio(mensaje, detalle=""):
+    """
+    Aviso que ocupa el lugar de una tabla sin
+    filas.
+
+    Una tabla con encabezado y cero líneas parece
+    un fallo; esto explica que aún no hay nada.
+    """
+
+    contenedor = QWidget()
+
+    layout = QVBoxLayout(contenedor)
+    layout.setContentsMargins(20, 40, 20, 40)
+    layout.setSpacing(8)
+    layout.addStretch()
+
+    icono = QLabel("📭")
+
+    icono.setObjectName("estado_vacio_icono")
+
+    icono.setAlignment(Qt.AlignCenter)
+
+    layout.addWidget(icono)
+
+    texto = QLabel(mensaje)
+
+    texto.setObjectName("estado_vacio_titulo")
+
+    texto.setAlignment(Qt.AlignCenter)
+
+    texto.setWordWrap(True)
+
+    layout.addWidget(texto)
+
+    if detalle:
+
+        ayuda = QLabel(detalle)
+
+        ayuda.setObjectName("estado_vacio_detalle")
+
+        ayuda.setAlignment(Qt.AlignCenter)
+
+        ayuda.setWordWrap(True)
+
+        layout.addWidget(ayuda)
+
+    layout.addStretch()
+
+    return contenedor
+
+
+# ==========================================
+# TECLADO EN FORMULARIOS
+# ==========================================
+# Escape ya lo resuelve QDialog: cierra con
+# reject() sin escribir nada.
+#
+# Return no: QLineEdit, QSpinBox y QComboBox se
+# lo quedan y emiten returnPressed. Por eso cada
+# formulario conecta sus campos al guardado.
+# ==========================================
+
+def conectar_enter_guardar(campos, guardar):
+    """
+    Conecta Return para guardar en los campos
+    indicados.
+    """
+
+    for campo in campos:
+
+        if campo is None:
+            continue
+
+        campo.returnPressed.connect(guardar)
 
 
 # ==========================================

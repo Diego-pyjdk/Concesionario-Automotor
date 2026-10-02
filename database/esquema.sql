@@ -193,6 +193,87 @@ CREATE TABLE usuarios (
 
 
 -- ==========================================
+-- CONFIGURACIÓN
+-- ==========================================
+-- Ajustes del sistema en clave/valor.
+--
+-- "stock_minimo" es el umbral por debajo del
+-- cual un vehículo aparece como stock bajo en el
+-- panel principal.
+--
+-- Cualquier cambio aquí queda registrado en
+-- la tabla auditoria.
+-- ==========================================
+
+CREATE TABLE configuracion (
+
+    clave VARCHAR(50) NOT NULL,
+
+    valor VARCHAR(255) NOT NULL,
+
+    descripcion VARCHAR(255) DEFAULT NULL,
+
+    PRIMARY KEY (clave)
+
+);
+
+
+-- ==========================================
+-- AUDITORÍA
+-- ==========================================
+-- Rastro de las acciones importantes.
+--
+-- Se guardan DOS cosas del usuario a propósito:
+--
+--   usuario_id     referencia al usuario. Con
+--                  ON DELETE SET NULL, si se
+--                  borra la cuenta, el registro
+--                  sobrevive.
+--   usuario_nombre copia del nombre en el
+--                  momento de la acción, para que
+--                  el rastro siga siendo legible
+--                  aunque la cuenta ya no exista.
+--
+-- "accion" es un código corto y estable; el
+-- texto legible sale de ACCIONES en
+-- database/auditoria.py.
+-- ==========================================
+
+CREATE TABLE auditoria (
+
+    id BIGINT NOT NULL AUTO_INCREMENT,
+
+    usuario_id INT DEFAULT NULL,
+
+    usuario_nombre VARCHAR(50) DEFAULT NULL,
+
+    accion VARCHAR(30) NOT NULL,
+
+    modulo VARCHAR(30) NOT NULL,
+
+    descripcion VARCHAR(255) DEFAULT NULL,
+
+    fecha_hora DATETIME NOT NULL
+        DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+
+    KEY ix_auditoria_fecha (fecha_hora),
+
+    KEY ix_auditoria_accion (accion),
+
+    KEY ix_auditoria_modulo (modulo),
+
+    KEY ix_auditoria_usuario (usuario_id),
+
+    CONSTRAINT auditoria_usuario_fk
+        FOREIGN KEY (usuario_id)
+        REFERENCES usuarios (id)
+        ON DELETE SET NULL
+);
+
+
+-- ==========================================
 -- DATOS INICIALES
 -- ==========================================
 -- Sin marcas no se puede crear un vehículo:
@@ -215,3 +296,8 @@ INSERT INTO marcas (nombre) VALUES
     ('Honda'),
     ('BMW'),
     ('Audi');
+
+INSERT INTO configuracion (clave, valor, descripcion) VALUES
+    ('stock_minimo',
+     '3',
+     'Un vehículo con stock menor o igual a este valor aparece como stock bajo.');

@@ -1,11 +1,3 @@
-from PySide6.QtWidgets import (
-    QVBoxLayout,
-    QHBoxLayout,
-    QLineEdit,
-    QPushButton,
-    QMessageBox
-)
-
 from database.marcas import (
     obtener_marcas,
     buscar_marcas,
@@ -13,179 +5,79 @@ from database.marcas import (
 )
 
 from utils.helpers import (
-    crear_tabla,
-    celda,
-    crear_botones_accion,
-    crear_boton_principal,
-    crear_titulo
+    crear_botones_accion
 )
 
-from gui.vista_base import VistaBase
+from gui.vista_listado import VistaListado
 
 from gui.formularios.marca_form import MarcaForm
 
 
-class MarcasView(VistaBase):
+class MarcasView(VistaListado):
 
-    def __init__(self, parent=None, puede_gestionar=True):
-        super().__init__(parent)
+    titulo = "Marcas"
 
-        self.puede_gestionar = puede_gestionar
+    columnas = ["ID", "Nombre", "Acciones"]
 
-        self.crear_interfaz()
+    columna_acciones = 2
 
-    def crear_interfaz(self):
+    texto_nuevo = "+ Nueva marca"
 
-        layout_principal = QVBoxLayout()
+    placeholder_busqueda = "Buscar marca..."
 
-        layout_principal.setContentsMargins(
-            30, 25, 30, 25
+    mensaje_vacio = "Todavía no hay marcas"
+
+    detalle_vacio = (
+        "Crea la primera marca para poder "
+        "registrar vehículos."
+    )
+
+    def cargar_datos(self):
+
+        self.mostrar_de(obtener_marcas)
+
+    def pintar_fila(self, fila, marca):
+
+        id_marca, nombre = marca
+
+        self.marcar_columnas(
+            fila,
+            [id_marca, nombre],
+            centrar={0}
         )
 
-        layout_principal.setSpacing(20)
-
-        self.setLayout(layout_principal)
-
-        # ------------------------------
-        # ENCABEZADO
-        # ------------------------------
-
-        encabezado = QHBoxLayout()
-
-        encabezado.addWidget(
-            crear_titulo("Marcas")
+        botones = crear_botones_accion(
+            lambda _, f=fila: self.editar_marca(f),
+            lambda _, f=fila: self.eliminar_marca(f),
+            mostrar_eliminar=self.puede_gestionar
         )
 
-        encabezado.addStretch()
+        self.poner_acciones(fila, botones)
 
-        if self.puede_gestionar:
+    def buscar(self, texto):
 
-            encabezado.addWidget(
-                crear_boton_principal(
-                    "+ Nueva marca",
-                    self.nueva_marca
-                )
-            )
+        if not texto:
 
-        layout_principal.addLayout(encabezado)
+            self.cargar_datos()
 
-        # ------------------------------
-        # BÚSQUEDA
-        # ------------------------------
+            return
 
-        busqueda_layout = QHBoxLayout()
-
-        self.campo_busqueda = QLineEdit()
-
-        self.campo_busqueda.setPlaceholderText(
-            "Buscar marca..."
-        )
-
-        self.campo_busqueda.setFixedHeight(40)
-
-        self.campo_busqueda.returnPressed.connect(
-            self.buscar
-        )
-
-        boton_buscar = QPushButton("🔍 Buscar")
-
-        boton_buscar.setObjectName(
-            "boton_filtro"
-        )
-
-        boton_buscar.setFixedHeight(40)
-
-        boton_buscar.clicked.connect(
-            self.buscar
-        )
-
-        busqueda_layout.addWidget(
-            self.campo_busqueda
-        )
-
-        busqueda_layout.addWidget(
-            boton_buscar
-        )
-
-        layout_principal.addLayout(busqueda_layout)
-
-        # ------------------------------
-        # TABLA
-        # ------------------------------
-
-        self.tabla = crear_tabla(
-            ["ID", "Nombre", "Acciones"],
-            columna_acciones=2,
-            ancho_acciones=148
-        )
-
-        layout_principal.addWidget(self.tabla)
-
-        # ------------------------------
-        # CARGAR
-        # ------------------------------
-
-        self.cargar_datos()
+        self.mostrar_de(buscar_marcas, texto)
 
     # =============================
-    # NUEVA MARCA
+    # ALTA
     # =============================
 
-    def nueva_marca(self):
+    def nuevo_registro(self):
 
         formulario = MarcaForm(self)
 
         if formulario.exec():
+
             self.cargar_datos()
 
     # =============================
-    # CARGAR MARCAS
-    # =============================
-
-    def cargar_datos(self):
-
-        self.mostrar_marcas(
-            obtener_marcas()
-        )
-
-    # =============================
-    # MOSTRAR MARCAS
-    # =============================
-
-    def mostrar_marcas(self, marcas):
-
-        self.tabla.setRowCount(len(marcas))
-
-        for fila, marca in enumerate(marcas):
-
-            id_marca, nombre = marca
-
-            self.tabla.setItem(
-                fila,
-                0,
-                celda(id_marca, centrar=True)
-            )
-
-            self.tabla.setItem(
-                fila,
-                1,
-                celda(nombre)
-            )
-
-            botones = crear_botones_accion(
-                lambda _, f=fila: self.editar_marca(f),
-                lambda _, f=fila: self.eliminar_marca(f),
-                mostrar_eliminar=self.puede_gestionar
-            )
-
-            self.tabla.setCellWidget(
-                fila,
-                2,
-                botones
-            )
-
-    # =============================
-    # EDITAR MARCA
+    # EDICIÓN
     # =============================
 
     def editar_marca(self, fila):
@@ -195,6 +87,7 @@ class MarcasView(VistaBase):
         item_nombre = self.tabla.item(fila, 1)
 
         if not item_id or not item_nombre:
+
             return
 
         marca = (
@@ -202,46 +95,48 @@ class MarcasView(VistaBase):
             item_nombre.text()
         )
 
-        formulario = MarcaForm(
-            self,
-            marca
-        )
+        formulario = MarcaForm(self, marca)
 
         if formulario.exec():
+
             self.cargar_datos()
 
     # =============================
-    # ELIMINAR MARCA
+    # BORRADO
     # =============================
 
     def eliminar_marca(self, fila):
 
         item = self.tabla.item(fila, 0)
 
-        if not item:
+        item_nombre = self.tabla.item(fila, 1)
+
+        if not item or not item_nombre:
+
             return
 
         id_marca = int(item.text())
 
-        respuesta = QMessageBox.question(
-            self,
-            "Eliminar marca",
-            "¿Estás seguro de que deseas eliminar "
-            "esta marca?",
-            QMessageBox.Yes | QMessageBox.No
-        )
+        if not self.confirmar_borrado(
+            item_nombre.text(),
+            "Si tiene vehículos asociados no se "
+            "podrá eliminar."
+        ):
 
-        if respuesta != QMessageBox.Yes:
             return
 
-        # Una marca con vehículos no se puede
-        # eliminar: se perdería la información
-        # del vehículo.
+        resultado = self.proteger(
+            eliminar_marca_db,
+            id_marca
+        )
 
-        if not eliminar_marca_db(id_marca):
-            QMessageBox.warning(
-                self,
-                "No se puede eliminar",
+        if resultado is None:
+
+            return
+
+        if not resultado:
+
+            self.mostrar_mensaje_error(
                 "La marca tiene vehículos asociados. "
                 "Elimina o cambia de marca esos "
                 "vehículos primero."
@@ -249,20 +144,9 @@ class MarcasView(VistaBase):
 
             return
 
-        self.cargar_datos()
-
-    # =============================
-    # BUSCAR MARCA
-    # =============================
-
-    def buscar(self):
-
-        texto = self.campo_busqueda.text().strip()
-
-        if not texto:
-            self.cargar_datos()
-            return
-
-        self.mostrar_marcas(
-            buscar_marcas(texto)
+        self.mostrar_exito(
+            f"La marca '{item_nombre.text()}' "
+            "se eliminó correctamente."
         )
+
+        self.cargar_datos()

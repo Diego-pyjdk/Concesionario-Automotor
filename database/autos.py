@@ -2,6 +2,8 @@ from database.conexion import obtener_conexion
 
 from database.ventas import contar_ventas_de_auto
 
+from database.auditoria import registrar_accion
+
 from permisos import (
     requiere_permiso,
     GESTIONAR_VEHICULOS
@@ -68,6 +70,13 @@ def insertar_auto(marca_id, modelo, anio, precio, color, stock):
     cursor.close()
     conexion.close()
 
+    registrar_accion(
+        "vehiculos",
+        "CREAR",
+        f"Vehículo {modelo} ({anio}) creado "
+        f"con stock {stock}"
+    )
+
     return id_auto
 
 
@@ -114,6 +123,12 @@ def actualizar_auto(
     cursor.close()
     conexion.close()
 
+    registrar_accion(
+        "vehiculos",
+        "MODIFICAR",
+        f"Vehículo {id_auto} ({modelo}) actualizado"
+    )
+
 
 @requiere_permiso(GESTIONAR_VEHICULOS)
 def eliminar_auto(id_auto):
@@ -143,7 +158,14 @@ def eliminar_auto(id_auto):
     cursor.close()
     conexion.close()
 
+    registrar_accion(
+        "vehiculos",
+        "ELIMINAR",
+        f"Vehículo {id_auto} eliminado"
+    )
+
     return True
+
 
 def buscar_autos(texto):
 

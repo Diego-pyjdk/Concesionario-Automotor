@@ -1,5 +1,7 @@
 from database.conexion import obtener_conexion
 
+from database.auditoria import registrar_accion
+
 from permisos import (
     requiere_permiso,
     GESTIONAR_MARCAS
@@ -143,6 +145,12 @@ def insertar_marca(nombre):
     cursor.close()
     conexion.close()
 
+    registrar_accion(
+        "marcas",
+        "CREAR",
+        f"Marca '{nombre}' creada"
+    )
+
     return id_marca
 
 
@@ -171,6 +179,12 @@ def actualizar_marca(id_marca, nombre):
 
     cursor.close()
     conexion.close()
+
+    registrar_accion(
+        "marcas",
+        "MODIFICAR",
+        f"Marca {id_marca} renombrada a '{nombre}'"
+    )
 
 
 # =============================
@@ -204,5 +218,11 @@ def eliminar_marca(id_marca):
 
     cursor.close()
     conexion.close()
+
+    registrar_accion(
+        "marcas",
+        "ELIMINAR",
+        f"Marca {id_marca} eliminada"
+    )
 
     return True

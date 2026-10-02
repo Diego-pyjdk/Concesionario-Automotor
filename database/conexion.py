@@ -54,10 +54,17 @@ def cargar_env():
         return
 
     try:
+        # utf-8-sig y no utf-8: si el archivo
+        # lleva BOM (lo añade de más el Bloc de
+        # notas al guardarlo), la primera clave
+        # se llamaría "\ufeffDB_HOST" y no se
+        # leería. El fallo sería silencioso: se
+        # usaría el valor por defecto y todo
+        # parecería correcto.
         with open(
             RUTA_ENV,
             "r",
-            encoding="utf-8"
+            encoding="utf-8-sig"
         ) as archivo:
 
             for linea in archivo:
@@ -117,7 +124,7 @@ def configuracion():
         ),
         "password": os.environ.get(
             "DB_PASSWORD",
-            " "
+            "224426"
         ),
         "database": os.environ.get(
             "DB_NAME",

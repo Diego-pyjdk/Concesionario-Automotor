@@ -1,12 +1,3 @@
-from PySide6.QtWidgets import (
-    QVBoxLayout,
-    QHBoxLayout,
-    QLineEdit,
-    QPushButton,
-    QLabel,
-    QMessageBox
-)
-
 from database.usuarios import (
     obtener_usuarios,
     buscar_usuarios,
@@ -18,264 +9,98 @@ from database.usuarios import (
 import sesion as modulo_sesion
 
 from utils.helpers import (
-    crear_tabla,
-    celda,
-    crear_botones_accion,
-    crear_boton_principal,
-    crear_titulo
+    crear_botones_accion
 )
 
-from gui.vista_base import VistaBase
+from gui.vista_listado import VistaListado
 
 from gui.formularios.usuario_form import UsuarioForm
 
 
-class UsuariosView(VistaBase):
+class UsuariosView(VistaListado):
 
-    def __init__(self):
-        super().__init__()
+    titulo = "Usuarios"
 
-        self.crear_interfaz()
+    columnas = [
+        "ID",
+        "Usuario",
+        "Nombre completo",
+        "Rol",
+        "Estado",
+        "Último acceso",
+        "Acciones"
+    ]
 
-    def crear_interfaz(self):
+    columna_acciones = 6
 
-        layout_principal = QVBoxLayout()
+    texto_nuevo = "+ Nuevo usuario"
 
-        layout_principal.setContentsMargins(
-            30, 25, 30, 25
-        )
+    placeholder_busqueda = "Buscar por usuario, nombre o rol..."
 
-        layout_principal.setSpacing(20)
+    mensaje_vacio = "No hay usuarios"
 
-        self.setLayout(layout_principal)
+    detalle_vacio = (
+        "Crea el administrador inicial con "
+        "crear_admin.py."
+    )
 
-        # ------------------------------
-        # ENCABEZADO
-        # ------------------------------
-
-        encabezado = QHBoxLayout()
-
-        encabezado.addWidget(
-            crear_titulo("Usuarios")
-        )
-
-        encabezado.addStretch()
-
-        encabezado.addWidget(
-            crear_boton_principal(
-                "+ Nuevo usuario",
-                self.nuevo_usuario
-            )
-        )
-
-        layout_principal.addLayout(encabezado)
-
-        # ------------------------------
-        # AVISO DE CONTRASEÑAS
-        # ------------------------------
-
-        aviso = QLabel(
-            "Las contraseñas se guardan cifradas "
-            "con PBKDF2 y no se pueden recuperar: "
-            "solo se pueden restablecer."
-        )
-
-        aviso.setObjectName(
-            "aviso"
-        )
-
-        aviso.setWordWrap(True)
-
-        layout_principal.addWidget(aviso)
-
-        # ------------------------------
-        # BÚSQUEDA
-        # ------------------------------
-
-        busqueda_layout = QHBoxLayout()
-
-        self.campo_busqueda = QLineEdit()
-
-        self.campo_busqueda.setPlaceholderText(
-            "Buscar por usuario, nombre o rol..."
-        )
-
-        self.campo_busqueda.setFixedHeight(40)
-
-        self.campo_busqueda.returnPressed.connect(
-            self.buscar
-        )
-
-        boton_buscar = QPushButton("🔍 Buscar")
-
-        boton_buscar.setObjectName(
-            "boton_filtro"
-        )
-
-        boton_buscar.setFixedHeight(40)
-
-        boton_buscar.clicked.connect(
-            self.buscar
-        )
-
-        busqueda_layout.addWidget(
-            self.campo_busqueda
-        )
-
-        busqueda_layout.addWidget(
-            boton_buscar
-        )
-
-        layout_principal.addLayout(busqueda_layout)
-
-        # ------------------------------
-        # TABLA
-        # ------------------------------
-        # Contrato con obtener_usuarios():
-        # id, nombre_usuario, nombre_completo,
-        # rol, activo, ultimo_acceso.
-        # ------------------------------
-
-        self.tabla = crear_tabla(
-            [
-                "ID",
-                "Usuario",
-                "Nombre completo",
-                "Rol",
-                "Estado",
-                "Último acceso",
-                "Acciones"
-            ],
-            columna_acciones=6,
-            ancho_acciones=148
-        )
-
-        layout_principal.addWidget(self.tabla)
-
-        # ------------------------------
-        # CARGAR
-        # ------------------------------
-
-        self.cargar_datos()
-
-    # =============================
-    # NUEVO USUARIO
-    # =============================
-
-    def nuevo_usuario(self):
-
-        formulario = UsuarioForm(self)
-
-        if formulario.exec():
-
-            self.cargar_datos()
-
-    # =============================
-    # CARGAR
-    # =============================
+    anchos_fijos = {5: 130}
 
     def cargar_datos(self):
 
-        usuarios = self.proteger(
-            obtener_usuarios
-        )
+        self.mostrar_de(obtener_usuarios)
 
-        if usuarios is None:
+    def pintar_fila(self, fila, usuario):
 
-            return
-
-        self.mostrar_usuarios(usuarios)
-
-    # =============================
-    # MOSTRAR
-    # =============================
-
-    def mostrar_usuarios(self, usuarios):
-
-        self.tabla.setRowCount(len(usuarios))
+        (
+            id_usuario,
+            nombre_usuario,
+            nombre_completo,
+            rol,
+            activo,
+            ultimo_acceso,
+            intentos_fallidos,
+            bloqueado_hasta
+        ) = usuario
 
         sesion = modulo_sesion.obtener_sesion()
 
-        for fila, usuario in enumerate(usuarios):
+        # Marca la cuenta con la que se inició
+        # sesión para no confundirla.
 
-            (
+        texto = nombre_usuario
+
+        if id_usuario == sesion.id_usuario:
+
+            texto = f"{nombre_usuario}  ●"
+
+        self.marcar_columnas(
+            fila,
+            [
                 id_usuario,
-                nombre_usuario,
+                texto,
                 nombre_completo,
-                rol,
-                activo,
-                ultimo_acceso,
-                intentos_fallidos,
-                bloqueado_hasta
-            ) = usuario
+                self.texto_rol(rol),
+                self.texto_estado(
+                    activo,
+                    intentos_fallidos,
+                    bloqueado_hasta
+                ),
+                self.texto_fecha(ultimo_acceso)
+            ],
+            centrar={0, 5}
+        )
 
-            self.tabla.setItem(
-                fila,
-                0,
-                celda(id_usuario, centrar=True)
-            )
+        botones = crear_botones_accion(
+            lambda _, f=fila: self.editar_usuario(f),
+            lambda _, f=fila: self.eliminar_usuario(f)
+        )
 
-            texto_usuario = nombre_usuario
+        self.poner_acciones(fila, botones)
 
-            # Marca la cuenta con la que se
-            # inició sesión para no confundirla
-            # con las demás.
-
-            if id_usuario == sesion.id_usuario:
-
-                texto_usuario = f"{nombre_usuario}  ●"
-
-            self.tabla.setItem(
-                fila,
-                1,
-                celda(texto_usuario)
-            )
-
-            self.tabla.setItem(
-                fila,
-                2,
-                celda(nombre_completo)
-            )
-
-            self.tabla.setItem(
-                fila,
-                3,
-                celda(self.texto_rol(rol))
-            )
-
-            self.tabla.setItem(
-                fila,
-                4,
-                celda(
-                    self.texto_estado(
-                        activo,
-                        intentos_fallidos,
-                        bloqueado_hasta
-                    )
-                )
-            )
-
-            self.tabla.setItem(
-                fila,
-                5,
-                celda(
-                    "Nunca"
-                    if ultimo_acceso is None
-                    else str(ultimo_acceso),
-                    centrar=True
-                )
-            )
-
-            botones = crear_botones_accion(
-                lambda _, f=fila: self.editar_usuario(f),
-                lambda _, f=fila: self.eliminar_usuario(f)
-            )
-
-            self.tabla.setCellWidget(
-                fila,
-                6,
-                botones
-            )
+    # =============================
+    # FORMATO
+    # =============================
 
     def texto_rol(self, rol):
 
@@ -287,6 +112,21 @@ class UsuariosView(VistaBase):
 
         return rol
 
+    def texto_fecha(self, valor):
+        """
+        '2026-09-30 16:14:14' no cabe en la
+        columna y no aporta: día y hora sin
+        segundos.
+        """
+
+        if valor is None:
+            return "Nunca"
+
+        try:
+            return valor.strftime("%d/%m/%Y %H:%M")
+        except AttributeError:
+            return str(valor)
+
     def texto_estado(
         self,
         activo,
@@ -294,9 +134,9 @@ class UsuariosView(VistaBase):
         bloqueado_hasta
     ):
         """
-        El bloqueo aparece en la columna Estado
-        para que el administrador entienda por qué
-        alguien no puede entrar.
+        El bloqueo se ve en la columna Estado: si
+        no, el administrador no entiende por qué
+        alguien no entra.
         """
 
         if not activo:
@@ -328,10 +168,26 @@ class UsuariosView(VistaBase):
         return "Activo"
 
     # =============================
-    # EDITAR
+    # ALTA
+    # =============================
+
+    def nuevo_registro(self):
+
+        formulario = UsuarioForm(self)
+
+        if formulario.exec():
+
+            self.cargar_datos()
+
+    # =============================
+    # EDICIÓN
     # =============================
 
     def editar_usuario(self, fila):
+
+        # Editar una cuenta bloqueada ofrece
+        # primero desbloquearla: es lo que el
+        # administrador quiere en ese momento.
 
         item_estado = self.tabla.item(fila, 4)
 
@@ -348,17 +204,11 @@ class UsuariosView(VistaBase):
 
                 return
 
-        valores = []
+        valores = self.leer_valores(fila, 6)
 
-        for columna in range(6):
+        if valores is None:
 
-            item = self.tabla.item(fila, columna)
-
-            if item is None:
-
-                return
-
-            valores.append(item.text())
+            return
 
         usuario = (
             int(valores[0]),
@@ -376,7 +226,7 @@ class UsuariosView(VistaBase):
             self.cargar_datos()
 
     # =============================
-    # DESBLOQUEAR
+    # DESBLOQUEO
     # =============================
 
     def desbloquear(self, fila):
@@ -384,19 +234,22 @@ class UsuariosView(VistaBase):
         item = self.tabla.item(fila, 0)
 
         if not item:
+
             return
 
         id_usuario = int(item.text())
 
-        self.proteger(
-            reiniciar_bloqueo,
-            id_usuario
+        self.proteger(reiniciar_bloqueo, id_usuario)
+
+        self.mostrar_exito(
+            f"La cuenta {id_usuario} quedó "
+            "desbloqueada."
         )
 
         self.cargar_datos()
 
     # =============================
-    # ELIMINAR
+    # BORRADO
     # =============================
 
     def eliminar_usuario(self, fila):
@@ -412,13 +265,11 @@ class UsuariosView(VistaBase):
         id_usuario = int(item.text())
 
         nombre = item_usuario.text().replace(
-            "  ●",
-            ""
+            "  ●", ""
         )
 
-        if not self.confirmar(
-            "Eliminar usuario",
-            f"¿Eliminar la cuenta '{nombre}'?\n\n"
+        if not self.confirmar_borrado(
+            f"la cuenta '{nombre}'",
             "El historial de ventas no se borra."
         ):
 
@@ -437,23 +288,22 @@ class UsuariosView(VistaBase):
 
         if not correcto:
 
-            QMessageBox.warning(
-                self,
-                "No se puede eliminar",
-                motivo
-            )
+            self.mostrar_mensaje_error(motivo)
 
             return
+
+        self.mostrar_exito(
+            f"La cuenta '{nombre}' se eliminó "
+            "correctamente."
+        )
 
         self.cargar_datos()
 
     # =============================
-    # BUSCAR
+    # BÚSQUEDA
     # =============================
 
-    def buscar(self):
-
-        texto = self.campo_busqueda.text().strip()
+    def buscar(self, texto):
 
         if not texto:
 
@@ -461,13 +311,4 @@ class UsuariosView(VistaBase):
 
             return
 
-        usuarios = self.proteger(
-            buscar_usuarios,
-            texto
-        )
-
-        if usuarios is None:
-
-            return
-
-        self.mostrar_usuarios(usuarios)
+        self.mostrar_de(buscar_usuarios, texto)

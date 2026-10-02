@@ -1,168 +1,172 @@
+# ==========================================
+# PANEL PRINCIPAL
+# ==========================================
+# Todas las cifras salen de database/reportes.py.
+# Aquí no se calcula nada: se consulta una vez y
+# se pinta.
+#
+# El vendedor entra a este panel (VER_TABLERO),
+# así que no puede usar consultas que pidan
+# VER_REPORTES. De ahí que obtener_resumen() y
+# las estadísticas del día y del mes permitan
+# TABLERO y el detalle de reportes no.
+# ==========================================
+
+
 from PySide6.QtWidgets import (
-    QWidget,
     QVBoxLayout,
     QHBoxLayout,
     QLabel,
-    QFrame
+    QFrame,
+    QStackedWidget
 )
 
-from database.dashboard import (
+from database.reportes import (
     obtener_resumen,
     obtener_ultima_venta,
-    STOCK_MINIMO
+    obtener_ventas_del_dia,
+    obtener_ventas_del_mes,
+    obtener_top_vehiculos,
+    obtener_ventas_por_cliente
 )
 
-from database.autos import (
-    obtener_autos_stock_bajo
-)
+from database.configuracion import obtener_stock_minimo
 
-from database.ventas import (
-    obtener_ventas_recientes
-)
+from database.ventas import obtener_ventas_recientes
 
 from utils.helpers import (
     crear_tabla,
-    celda,
-    crear_titulo
+    crear_titulo,
+    crear_estado_vacio,
+    celda
 )
 
+from gui.vista_base import VistaBase
 
-class DashboardView(QWidget):
-    """
-    Panel principal. Todos los datos salen de
-    MySQL; se vuelve a consultar cada vez que el
-    usuario navega a Inicio.
-    """
+
+class DashboardView(VistaBase):
 
     def __init__(self):
         super().__init__()
 
         self.crear_interfaz()
+
         self.cargar_datos()
+
+    # =============================
+    # INTERFAZ
+    # =============================
 
     def crear_interfaz(self):
 
-        layout_principal = QVBoxLayout()
+        layout = QVBoxLayout()
 
-        layout_principal.setContentsMargins(
-            30, 25, 30, 25
-        )
+        layout.setContentsMargins(30, 25, 30, 25)
+        layout.setSpacing(18)
 
-        layout_principal.setSpacing(20)
+        self.setLayout(layout)
 
-        self.setLayout(layout_principal)
-
-        layout_principal.addWidget(
+        layout.addWidget(
             crear_titulo("Panel principal")
         )
 
-        subtitulo = QLabel(
-            "Resumen de la actividad del concesionario"
+        self.etiqueta_subtitulo = QLabel("")
+
+        self.etiqueta_subtitulo.setObjectName(
+            "subtitulo"
         )
 
-        layout_principal.addWidget(subtitulo)
+        layout.addWidget(
+            self.etiqueta_subtitulo
+        )
 
         # ------------------------------
-        # TARJETAS
+        # CIFRAS PRINCIPALES
         # ------------------------------
 
-        tarjetas_layout = QHBoxLayout()
-        tarjetas_layout.setSpacing(15)
+        tarjetas = QHBoxLayout()
+        tarjetas.setSpacing(15)
 
         self.tarjeta_autos = self.crear_tarjeta(
-            "🚗", "Vehículos", "0"
-        )
-
-        self.tarjeta_marcas = self.crear_tarjeta(
-            "🏷", "Marcas", "0"
+            "🚗", "Vehículos"
         )
 
         self.tarjeta_clientes = self.crear_tarjeta(
-            "👤", "Clientes", "0"
+            "👤", "Clientes"
         )
 
         self.tarjeta_ventas = self.crear_tarjeta(
-            "💰", "Ventas", "0"
+            "💰", "Ventas"
         )
 
-        tarjetas_layout.addWidget(self.tarjeta_autos)
-        tarjetas_layout.addWidget(self.tarjeta_marcas)
-        tarjetas_layout.addWidget(self.tarjeta_clientes)
-        tarjetas_layout.addWidget(self.tarjeta_ventas)
+        self.tarjeta_marcas = self.crear_tarjeta(
+            "🏷", "Marcas"
+        )
 
-        layout_principal.addLayout(tarjetas_layout)
+        tarjetas.addWidget(self.tarjeta_autos)
+        tarjetas.addWidget(self.tarjeta_clientes)
+        tarjetas.addWidget(self.tarjeta_ventas)
+        tarjetas.addWidget(self.tarjeta_marcas)
+
+        layout.addLayout(tarjetas)
 
         # ------------------------------
-        # FILA INFERIOR
+        # CIFRAS DEL PERÍODO
         # ------------------------------
 
-        inferior_layout = QHBoxLayout()
-        inferior_layout.setSpacing(15)
+        tiles = QHBoxLayout()
+        tiles.setSpacing(15)
 
-        # STOCK BAJO
+        self.tile_hoy = self.crear_tile("Ventas de hoy")
+        self.tile_mes = self.crear_tile("Ventas del mes")
+        self.tile_total = self.crear_tile("Total vendido")
+        self.tile_stock = self.crear_tile("Stock bajo")
 
-        panel_stock = QFrame()
-        panel_stock.setObjectName("tarjeta")
+        tiles.addWidget(self.tile_hoy)
+        tiles.addWidget(self.tile_mes)
+        tiles.addWidget(self.tile_total)
+        tiles.addWidget(self.tile_stock)
 
-        layout_stock = QVBoxLayout()
-        layout_stock.setContentsMargins(20, 18, 20, 18)
-        layout_stock.setSpacing(10)
+        layout.addLayout(tiles)
 
-        titulo_stock = QLabel(
-            f"⚠️  Vehículos con stock bajo "
-            f"(≤ {STOCK_MINIMO})"
+        # ------------------------------
+        # TABLAS
+        # ------------------------------
+
+        paneles = QHBoxLayout()
+        paneles.setSpacing(15)
+
+        self.panel_ventas = self.crear_panel(
+            "🧾  Últimas ventas",
+            ["Fecha", "Cliente", "Vehículo", "Precio"],
+            vacio="Sin ventas registradas"
         )
 
-        titulo_stock.setObjectName(
-            "subtitulo"
+        self.panel_top = self.crear_panel(
+            "🏆  Vehículos más vendidos",
+            ["Vehículo", "Unidades", "Importe"],
+            anchos_fijos={1: 80},
+            vacio="Sin ventas registradas"
         )
 
-        layout_stock.addWidget(titulo_stock)
-
-        self.tabla_stock = crear_tabla(
-            ["Vehículo", "Stock"],
-            columna_acciones=None
+        self.panel_clientes = self.crear_panel(
+            "👥  Clientes con más compras",
+            ["Cliente", "Compras", "Importe"],
+            anchos_fijos={1: 80},
+            vacio="Sin compras registradas"
         )
 
-        self.tabla_stock.setMinimumHeight(230)
+        # "Últimas ventas" tiene cuatro columnas y
+        # las otras dos tres, así que se le da más
+        # ancho: con partes iguales, Cliente y
+        # Vehículo quedaban con unos pocos píxeles y
+        # mostraban solo puntos suspensivos.
 
-        layout_stock.addWidget(self.tabla_stock)
+        paneles.addWidget(self.panel_ventas, 4)
+        paneles.addWidget(self.panel_top, 3)
+        paneles.addWidget(self.panel_clientes, 3)
 
-        panel_stock.setLayout(layout_stock)
-
-        # VENTAS RECIENTES
-
-        panel_ventas = QFrame()
-        panel_ventas.setObjectName("tarjeta")
-
-        layout_ventas = QVBoxLayout()
-        layout_ventas.setContentsMargins(20, 18, 20, 18)
-        layout_ventas.setSpacing(10)
-
-        titulo_ventas = QLabel(
-            "🧾  Ventas recientes"
-        )
-
-        titulo_ventas.setObjectName(
-            "subtitulo"
-        )
-
-        layout_ventas.addWidget(titulo_ventas)
-
-        self.tabla_ventas = crear_tabla(
-            ["Fecha", "Cliente", "Vehículo", "Precio"]
-        )
-
-        self.tabla_ventas.setMinimumHeight(230)
-
-        layout_ventas.addWidget(self.tabla_ventas)
-
-        panel_ventas.setLayout(layout_ventas)
-
-        inferior_layout.addWidget(panel_stock)
-        inferior_layout.addWidget(panel_ventas)
-
-        layout_principal.addLayout(inferior_layout)
+        layout.addLayout(paneles)
 
         # ------------------------------
         # PIE
@@ -170,56 +174,136 @@ class DashboardView(QWidget):
 
         self.etiqueta_pie = QLabel("")
 
-        self.etiqueta_pie.setObjectName(
-            "pie"
-        )
+        self.etiqueta_pie.setObjectName("pie")
 
-        layout_principal.addWidget(
-            self.etiqueta_pie
-        )
+        layout.addWidget(self.etiqueta_pie)
 
-    def crear_tarjeta(self, icono, nombre, cantidad):
+    def crear_tarjeta(self, icono, nombre):
 
         tarjeta = QFrame()
         tarjeta.setObjectName("tarjeta")
 
-        layout = QVBoxLayout()
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(4)
+        lay = QVBoxLayout()
+        lay.setContentsMargins(20, 18, 20, 18)
+        lay.setSpacing(2)
 
-        tarjeta.setLayout(layout)
+        tarjeta.setLayout(lay)
 
-        icono_label = QLabel(icono)
-        icono_label.setObjectName("icono")
+        etiqueta_icono = QLabel(icono)
+        etiqueta_icono.setObjectName("icono")
 
-        nombre_label = QLabel(nombre)
-        nombre_label.setObjectName("nombre_tarjeta")
+        etiqueta_nombre = QLabel(nombre)
+        etiqueta_nombre.setObjectName("nombre_tarjeta")
 
-        cantidad_label = QLabel(cantidad)
-        cantidad_label.setObjectName("cantidad")
+        etiqueta_cantidad = QLabel("—")
+        etiqueta_cantidad.setObjectName("cantidad")
 
-        layout.addWidget(icono_label)
-        layout.addWidget(nombre_label)
-        layout.addWidget(cantidad_label)
+        lay.addWidget(etiqueta_icono)
+        lay.addWidget(etiqueta_nombre)
+        lay.addWidget(etiqueta_cantidad)
 
-        tarjeta.cantidad_label = cantidad_label
+        tarjeta.cantidad_label = etiqueta_cantidad
 
         return tarjeta
 
+    def crear_tile(self, nombre):
+
+        marco = QFrame()
+        marco.setObjectName("tile")
+
+        lay = QVBoxLayout()
+        lay.setContentsMargins(16, 12, 16, 12)
+        lay.setSpacing(2)
+
+        marco.setLayout(lay)
+
+        etiqueta_nombre = QLabel(nombre)
+        etiqueta_nombre.setObjectName("tile_nombre")
+
+        etiqueta_valor = QLabel("—")
+        etiqueta_valor.setObjectName("tile_valor")
+
+        lay.addWidget(etiqueta_nombre)
+        lay.addWidget(etiqueta_valor)
+
+        marco.valor_label = etiqueta_valor
+
+        return marco
+
+    def crear_panel(
+        self,
+        titulo,
+        columnas,
+        anchos_fijos=None,
+        vacio="Sin datos"
+    ):
+        """
+        Tabla con título y estado vacío propio:
+        un QStackedWidget alterna entre ambas.
+        """
+
+        marco = QFrame()
+        marco.setObjectName("tarjeta")
+
+        lay = QVBoxLayout()
+        lay.setContentsMargins(18, 16, 18, 16)
+        lay.setSpacing(10)
+
+        marco.setLayout(lay)
+
+        etiqueta_titulo = QLabel(titulo)
+        etiqueta_titulo.setObjectName("subtitulo")
+
+        lay.addWidget(etiqueta_titulo)
+
+        contenedor = QStackedWidget()
+
+        tabla = crear_tabla(
+            columnas,
+            anchos_fijos=anchos_fijos
+        )
+
+        tabla.setMinimumHeight(200)
+
+        contenedor.addWidget(tabla)
+        contenedor.addWidget(crear_estado_vacio(vacio))
+
+        lay.addWidget(contenedor)
+
+        marco.tabla = tabla
+        marco.contenedor = contenedor
+
+        return marco
+
     # =============================
-    # CARGAR
+    # DATOS
     # =============================
 
     def cargar_datos(self):
+        """
+        Una pasada: consulta y pinta.
 
-        resumen = obtener_resumen()
+        El resumen se pide UNA vez y se reparte
+        entre tarjetas, mosaicos y pie: pedirlo
+        tres veces serían tres viajes a MySQL
+        para el mismo dato.
+        """
+
+        resumen = self.proteger(obtener_resumen)
+
+        self.cargar_tarjetas(resumen)
+        self.cargar_tiles(resumen)
+        self.cargar_tablas()
+        self.cargar_pie()
+
+    def cargar_tarjetas(self, resumen):
+
+        if resumen is None:
+
+            return
 
         self.tarjeta_autos.cantidad_label.setText(
             str(resumen["total_autos"])
-        )
-
-        self.tarjeta_marcas.cantidad_label.setText(
-            str(resumen["total_marcas"])
         )
 
         self.tarjeta_clientes.cantidad_label.setText(
@@ -230,106 +314,175 @@ class DashboardView(QWidget):
             str(resumen["total_ventas"])
         )
 
-        # ------------------------------
-        # STOCK BAJO
-        # ------------------------------
-
-        stock_bajo = obtener_autos_stock_bajo(
-            STOCK_MINIMO
+        self.tarjeta_marcas.cantidad_label.setText(
+            str(resumen["total_marcas"])
         )
 
-        self.mostrar_stock_bajo(stock_bajo)
+        self.etiqueta_subtitulo.setText(
+            f"{resumen['unidades']} unidades en "
+            f"inventario  ·  "
+            f"{resumen['sin_stock']} vehículo(s) sin stock"
+        )
 
-        # ------------------------------
-        # VENTAS RECIENTES
-        # ------------------------------
+    def cargar_tiles(self, resumen):
 
-        recientes = obtener_ventas_recientes(5)
+        hoy = self.proteger(obtener_ventas_del_dia)
 
-        self.mostrar_ventas(recientes)
+        if hoy is not None:
 
-        # ------------------------------
-        # PIE
-        # ------------------------------
+            total, importe = hoy
 
-        ingresos = float(resumen["ingresos"])
-
-        ultima_venta = obtener_ultima_venta()
-
-        if ultima_venta:
-            texto_fecha = (
-                f"Última venta: {ultima_venta}"
+            self.tile_hoy.valor_label.setText(
+                f"{total}  ·  {self.dinero(importe)}"
             )
+
+        mes = self.proteger(obtener_ventas_del_mes)
+
+        if mes is not None:
+
+            total, importe = mes
+
+            self.tile_mes.valor_label.setText(
+                f"{total}  ·  {self.dinero(importe)}"
+            )
+
+        if resumen is not None:
+
+            self.tile_total.valor_label.setText(
+                self.dinero(resumen["ingresos"])
+            )
+
+            umbral = self.proteger(
+                obtener_stock_minimo
+            )
+
+            if umbral is not None:
+
+                self.tile_stock.valor_label.setText(
+                    f"{resumen['stock_bajo']} (≤ {umbral})"
+                )
+
+    def cargar_tablas(self):
+
+        recientes = self.proteger(
+            obtener_ventas_recientes, 6
+        )
+
+        if recientes is not None:
+
+            filas = [
+                (
+                    str(fecha),
+                    cliente,
+                    vehiculo,
+                    f"{float(precio):,.2f}"
+                )
+                for (
+                    _, fecha, cliente,
+                    vehiculo, precio
+                ) in recientes
+            ]
+
+            self.pintar_panel(
+                self.panel_ventas,
+                filas,
+                centricos={0}
+            )
+
+        top = self.proteger(obtener_top_vehiculos, 6)
+
+        if top is not None:
+
+            filas = [
+                (
+                    vehiculo,
+                    unidades,
+                    f"{float(importe):,.2f}"
+                )
+                for vehiculo, unidades, importe in top
+            ]
+
+            self.pintar_panel(
+                self.panel_top,
+                filas,
+                centricos={1}
+            )
+
+        clientes = self.proteger(
+            obtener_ventas_por_cliente, 6
+        )
+
+        if clientes is not None:
+
+            filas = [
+                (
+                    cliente,
+                    compras,
+                    f"{float(importe):,.2f}"
+                )
+                for cliente, compras, importe in clientes
+            ]
+
+            self.pintar_panel(
+                self.panel_clientes,
+                filas,
+                centricos={1}
+            )
+
+    def cargar_pie(self):
+
+        ultima = self.proteger(obtener_ultima_venta)
+
+        if ultima:
+
+            texto = f"Última venta: {ultima}"
         else:
-            texto_fecha = "Todavía no hay ventas"
 
-        self.etiqueta_pie.setText(
-            f"Ingresos totales: $ {ingresos:,.2f}  ·  "
-            f"{texto_fecha}"
+            texto = "Todavía no hay ventas"
+
+        self.etiqueta_pie.setText(texto)
+
+    # =============================
+    # PINTADO
+    # =============================
+
+    def pintar_panel(self, panel, filas, centricos=None):
+
+        centricos = centricos or set()
+
+        vacio = len(filas) == 0
+
+        panel.contenedor.setCurrentIndex(
+            1 if vacio else 0
         )
 
-    def mostrar_stock_bajo(self, autos):
+        if vacio:
 
-        self.tabla_stock.setRowCount(len(autos))
+            return
 
-        for fila, auto in enumerate(autos):
+        tabla = panel.tabla
 
-            (
-                id_auto,
-                marca,
-                modelo,
-                anio,
-                precio,
-                color,
-                stock
-            ) = auto
+        tabla.setRowCount(len(filas))
 
-            self.tabla_stock.setItem(
-                fila,
-                0,
-                celda(f"{marca} {modelo}")
-            )
+        for indice, fila in enumerate(filas):
 
-            self.tabla_stock.setItem(
-                fila,
-                1,
-                celda(stock, centrar=True)
-            )
+            for columna, valor in enumerate(fila):
 
-    def mostrar_ventas(self, ventas):
+                tabla.setItem(
+                    indice,
+                    columna,
+                    celda(
+                        valor,
+                        centrar=columna in centricos
+                    )
+                )
 
-        self.tabla_ventas.setRowCount(len(ventas))
+    def dinero(self, valor):
 
-        for fila, venta in enumerate(ventas):
+        try:
 
-            (
-                id_venta,
-                fecha,
-                cliente,
-                vehiculo,
-                precio
-            ) = venta
+            return f"$ {float(valor):,.2f}"
 
-            self.tabla_ventas.setItem(
-                fila,
-                0,
-                celda(fecha, centrar=True)
-            )
+        except (TypeError, ValueError):
 
-            self.tabla_ventas.setItem(
-                fila,
-                1,
-                celda(cliente)
-            )
-
-            self.tabla_ventas.setItem(
-                fila,
-                2,
-                celda(vehiculo)
-            )
-
-            self.tabla_ventas.setItem(
-                fila,
-                3,
-                celda(f"{float(precio):,.2f}")
-            )
+            return "$ 0.00"

@@ -182,6 +182,8 @@ class LoginView(QDialog):
             self.etiqueta_error
         )
 
+        self.etiqueta_error.setVisible(False)
+
         layout_principal.addSpacing(10)
 
         # ------------------------------
@@ -252,6 +254,10 @@ class LoginView(QDialog):
 
             self.mostrar_error(error.mensaje)
 
+            self.campo_usuario.setEnabled(False)
+
+            self.campo_contrasena.setEnabled(False)
+
             return
 
         self.etiqueta_error.setText(
@@ -259,6 +265,8 @@ class LoginView(QDialog):
             "Ejecuta crear_admin.py para crear el "
             "primer administrador."
         )
+
+        self.etiqueta_error.setVisible(True)
 
         self.campo_usuario.setEnabled(False)
 
@@ -269,7 +277,20 @@ class LoginView(QDialog):
     # =============================
 
     def mostrar_error(self, mensaje):
+
         self.etiqueta_error.setText(mensaje)
+
+        self.etiqueta_error.setVisible(True)
+
+    def limpiar_error(self):
+        """
+        En vez de dejar el recuadro vacío flotando,
+        se oculta.
+        """
+
+        self.etiqueta_error.setText("")
+
+        self.etiqueta_error.setVisible(False)
 
     # =============================
     # ENTRAR
@@ -323,6 +344,6 @@ class LoginView(QDialog):
 
         modulo_sesion.iniciar_sesion(datos)
 
-        self.etiqueta_error.setText("")
+        self.limpiar_error()
 
         self.accept()

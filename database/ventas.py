@@ -2,6 +2,8 @@ import mysql.connector
 
 from database.conexion import obtener_conexion
 
+from database.auditoria import registrar_accion
+
 from permisos import (
     requiere_permiso,
     REGISTRAR_VENTAS,
@@ -300,6 +302,17 @@ def registrar_venta(cliente_id, auto_id, fecha, precio):
 
         conexion.commit()
 
+        # Se registra DESPUÉS del commit: si la
+        # transacción se revirtiera, el rastro
+        # mentiría.
+
+        registrar_accion(
+            "ventas",
+            "VENTA",
+            f"Venta por {float(precio):,.2f} del "
+            f"vehículo {auto_id} a cliente {cliente_id}"
+        )
+
         cursor.close()
         conexion.close()
 
@@ -375,6 +388,13 @@ def eliminar_venta(id_venta):
         cursor.execute(consulta_stock, (auto_id,))
 
         conexion.commit()
+
+        registrar_accion(
+            "ventas",
+            "VENTA_ANULADA",
+            f"Venta {id_venta} anulada; "
+            f"devuelta 1 unidad al vehículo {auto_id}"
+        )
 
         cursor.close()
         conexion.close()

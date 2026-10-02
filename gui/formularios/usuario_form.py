@@ -37,7 +37,8 @@ from utils.registro import registrar_error
 from utils.helpers import (
     crear_boton_principal,
     crear_boton_secundario,
-    crear_campo_contrasena
+    crear_campo_contrasena,
+    conectar_enter_guardar
 )
 
 
@@ -201,6 +202,16 @@ class UsuarioForm(QDialog):
         )
 
         layout_principal.addLayout(botones)
+
+        conectar_enter_guardar(
+            [
+                self.campo_usuario,
+                self.campo_nombre,
+                self.campo_contrasena,
+                self.campo_repetir
+            ],
+            self.guardar
+        )
 
         self.campo_usuario.setFocus()
 

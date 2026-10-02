@@ -1,31 +1,44 @@
-from PySide6.QtWidgets import (
-    QVBoxLayout,
-    QHBoxLayout,
-    QLineEdit,
-    QPushButton,
-    QLabel,
-    QMessageBox
-)
-
 from database.ventas import (
     obtener_ventas,
     eliminar_venta as eliminar_venta_db
 )
 
 from utils.helpers import (
-    crear_tabla,
-    celda,
-    crear_botones_accion,
-    crear_boton_principal,
-    crear_titulo
+    crear_botones_accion
 )
 
-from gui.vista_base import VistaBase
+from gui.vista_listado import VistaListado
 
 from gui.formularios.venta_form import VentaForm
 
 
-class VentasView(VistaBase):
+class VentasView(VistaListado):
+
+    titulo = "Ventas"
+
+    columnas = [
+        "ID",
+        "Fecha",
+        "Cliente",
+        "Vehículo",
+        "Precio",
+        "Acciones"
+    ]
+
+    columna_acciones = 5
+
+    texto_nuevo = "+ Nueva venta"
+
+    placeholder_busqueda = "Buscar por cliente o vehículo..."
+
+    mensaje_vacio = "Todavía no hay ventas"
+
+    detalle_vacio = (
+        "Registra la primera venta para verlas "
+        "aquí."
+    )
+
+    anchos_fijos = {1: 110, 4: 120}
 
     def __init__(
         self,
@@ -33,246 +46,96 @@ class VentasView(VistaBase):
         puede_registrar=True,
         puede_gestionar=True
     ):
-        super().__init__(parent)
-
         self.puede_registrar = puede_registrar
 
-        self.puede_gestionar = puede_gestionar
-
-        self.crear_interfaz()
-
-    def crear_interfaz(self):
-
-        layout_principal = QVBoxLayout()
-
-        layout_principal.setContentsMargins(
-            30, 25, 30, 25
+        super().__init__(
+            parent,
+            puede_gestionar=puede_gestionar
         )
 
-        layout_principal.setSpacing(20)
+    def muestra_boton_nuevo(self):
+        """
+        El vendedor registra ventas aunque no
+        pueda gestionarlas, así que aquí manda
+        puede_registrar y no puede_gestionar.
+        """
 
-        self.setLayout(layout_principal)
+        return self.puede_registrar
 
-        # ------------------------------
-        # ENCABEZADO
-        # ------------------------------
+    def cargar_datos(self):
 
-        encabezado = QHBoxLayout()
+        self.mostrar_de(obtener_ventas)
 
-        encabezado.addWidget(
-            crear_titulo("Ventas")
-        )
+    def pintar_fila(self, fila, venta):
 
-        encabezado.addStretch()
+        (
+            id_venta,
+            fecha,
+            cliente,
+            vehiculo,
+            precio
+        ) = venta
 
-        # El vendedor registra ventas pero no las
-        # borra: eliminar devuelve stock y altera
-        # el histórico.
-
-        if self.puede_registrar:
-
-            encabezado.addWidget(
-                crear_boton_principal(
-                    "+ Nueva venta",
-                    self.nueva_venta
-                )
-            )
-
-        layout_principal.addLayout(encabezado)
-
-        # ------------------------------
-        # TOTAL
-        # ------------------------------
-
-        self.etiqueta_total = QLabel("")
-
-        self.etiqueta_total.setObjectName(
-            "subtitulo"
-        )
-
-        layout_principal.addWidget(
-            self.etiqueta_total
-        )
-
-        # ------------------------------
-        # BÚSQUEDA
-        # ------------------------------
-
-        busqueda_layout = QHBoxLayout()
-
-        self.campo_busqueda = QLineEdit()
-
-        self.campo_busqueda.setPlaceholderText(
-            "Buscar por cliente o vehículo..."
-        )
-
-        self.campo_busqueda.setFixedHeight(40)
-
-        self.campo_busqueda.returnPressed.connect(
-            self.buscar
-        )
-
-        boton_buscar = QPushButton("🔍 Buscar")
-
-        boton_buscar.setObjectName(
-            "boton_filtro"
-        )
-
-        boton_buscar.setFixedHeight(40)
-
-        boton_buscar.clicked.connect(
-            self.buscar
-        )
-
-        busqueda_layout.addWidget(
-            self.campo_busqueda
-        )
-
-        busqueda_layout.addWidget(
-            boton_buscar
-        )
-
-        layout_principal.addLayout(busqueda_layout)
-
-        # ------------------------------
-        # TABLA
-        # ------------------------------
-
-        self.tabla = crear_tabla(
+        self.marcar_columnas(
+            fila,
             [
-                "ID",
-                "Fecha",
-                "Cliente",
-                "Vehículo",
-                "Precio",
-                "Acciones"
+                id_venta,
+                str(fecha),
+                cliente,
+                vehiculo,
+                f"{float(precio):,.2f}"
             ],
-            columna_acciones=5,
-            ancho_acciones=148
+            centrar={0, 1}
         )
 
-        layout_principal.addWidget(self.tabla)
+        # Las ventas no se editan: el primer
+        # botón muestra el detalle.
 
-        # ------------------------------
-        # CARGAR
-        # ------------------------------
+        botones = crear_botones_accion(
+            lambda _, f=fila: self.ver_venta(f),
+            lambda _, f=fila: self.eliminar_venta(f),
+            texto_editar="Ver",
+            mostrar_eliminar=self.puede_gestionar
+        )
 
-        self.cargar_datos()
+        self.poner_acciones(fila, botones)
+
+    def buscar(self, texto):
+
+        if not texto:
+
+            self.cargar_datos()
+
+            return
+
+        # Con lambda y no con argumentos posicionales:
+        # obtener_ventas tiene tres parámetros y
+        # pasar el texto en el tercero es frágil.
+        self.mostrar_de(
+            lambda: obtener_ventas(texto=texto)
+        )
 
     # =============================
-    # NUEVA VENTA
+    # ALTA
     # =============================
 
-    def nueva_venta(self):
+    def nuevo_registro(self):
 
         formulario = VentaForm(self)
 
         if formulario.exec():
+
             self.cargar_datos()
 
     # =============================
-    # CARGAR VENTAS
-    # =============================
-
-    def cargar_datos(self):
-
-        ventas = obtener_ventas()
-
-        self.mostrar_ventas(ventas)
-
-        # ------------------------------
-        # TOTAL
-        # ------------------------------
-
-        total = sum(
-            float(venta[4])
-            for venta in ventas
-        )
-
-        plural = "venta" if len(ventas) == 1 else "ventas"
-
-        self.etiqueta_total.setText(
-            f"{len(ventas)} {plural} registradas  ·  "
-            f"Total vendido: $ {total:,.2f}"
-        )
-
-    # =============================
-    # MOSTRAR VENTAS
-    # =============================
-
-    def mostrar_ventas(self, ventas):
-
-        self.tabla.setRowCount(len(ventas))
-
-        for fila, venta in enumerate(ventas):
-
-            (
-                id_venta,
-                fecha,
-                cliente,
-                vehiculo,
-                precio
-            ) = venta
-
-            self.tabla.setItem(
-                fila,
-                0,
-                celda(id_venta, centrar=True)
-            )
-
-            self.tabla.setItem(
-                fila,
-                1,
-                celda(fecha, centrar=True)
-            )
-
-            self.tabla.setItem(
-                fila,
-                2,
-                celda(cliente)
-            )
-
-            self.tabla.setItem(
-                fila,
-                3,
-                celda(vehiculo)
-            )
-
-            self.tabla.setItem(
-                fila,
-                4,
-                celda(f"{float(precio):,.2f}")
-            )
-
-            # Las ventas no se editan: solo se
-            # pueden eliminar, lo que devuelve
-            # la unidad al stock.
-
-            botones = crear_botones_accion(
-                lambda _, f=fila: self.ver_venta(f),
-                lambda _, f=fila: self.eliminar_venta(f),
-                texto_editar="Ver",
-                mostrar_eliminar=self.puede_gestionar
-            )
-
-            self.tabla.setCellWidget(
-                fila,
-                5,
-                botones
-            )
-
-    # =============================
-    # VER VENTA
+    # DETALLE
     # =============================
 
     def ver_venta(self, fila):
-
-        item_id = self.tabla.item(fila, 0)
-
-        if not item_id:
-            return
-
-        detalle = []
+        """
+        Detalle de solo lectura: una venta es
+        histórico y no se edita.
+        """
 
         titulos = [
             "ID",
@@ -282,23 +145,26 @@ class VentasView(VistaBase):
             "Precio"
         ]
 
+        lineas = []
+
         for columna, titulo in enumerate(titulos):
 
             item = self.tabla.item(fila, columna)
 
             if item:
-                detalle.append(
+
+                lineas.append(
                     f"{titulo}: {item.text()}"
                 )
 
-        QMessageBox.information(
-            self,
-            "Detalle de la venta",
-            "\n".join(detalle)
-        )
+        if not lineas:
+
+            return
+
+        self.mostrar_exito("\n".join(lineas))
 
     # =============================
-    # ELIMINAR VENTA
+    # ANULACIÓN
     # =============================
 
     def eliminar_venta(self, fila):
@@ -306,45 +172,39 @@ class VentasView(VistaBase):
         item = self.tabla.item(fila, 0)
 
         if not item:
+
             return
 
         id_venta = int(item.text())
 
-        respuesta = QMessageBox.question(
-            self,
-            "Eliminar venta",
-            "¿Eliminar esta venta?\n\n"
+        if not self.confirmar_borrado(
+            f"la venta {id_venta}",
             "La unidad volverá al stock del "
-            "vehículo.",
-            QMessageBox.Yes | QMessageBox.No
-        )
+            "vehículo."
+        ):
 
-        if respuesta != QMessageBox.Yes:
             return
 
-        if not eliminar_venta_db(id_venta):
-            QMessageBox.warning(
-                self,
-                "No se pudo eliminar",
-                "La venta no se pudo eliminar."
+        resultado = self.proteger(
+            eliminar_venta_db,
+            id_venta
+        )
+
+        if resultado is None:
+
+            return
+
+        if not resultado:
+
+            self.mostrar_mensaje_error(
+                "La venta no se pudo anular."
             )
 
             return
 
-        self.cargar_datos()
-
-    # =============================
-    # BUSCAR VENTA
-    # =============================
-
-    def buscar(self):
-
-        texto = self.campo_busqueda.text().strip()
-
-        if not texto:
-            self.cargar_datos()
-            return
-
-        self.mostrar_ventas(
-            obtener_ventas(texto=texto)
+        self.mostrar_exito(
+            f"La venta {id_venta} se anuló y la "
+            "unidad volvió al stock."
         )
+
+        self.cargar_datos()
