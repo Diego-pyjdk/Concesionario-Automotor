@@ -6,6 +6,9 @@ __pycache__/
 .vscode/
 registro_errores.log
 
+# El log rota solo: estas son sus copias.
+registro_errores.log.*
+
 # Los PDF de los contratos son documentos
 # de operaciones concretas, no código: no van
 # al repositorio.

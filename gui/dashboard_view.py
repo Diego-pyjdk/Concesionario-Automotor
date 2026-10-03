@@ -41,6 +41,11 @@ from utils.helpers import (
     celda
 )
 
+from utils.moneda import (
+    formato_dinero,
+    formatear_numero
+)
+
 from gui.vista_base import VistaBase
 
 
@@ -375,7 +380,7 @@ class DashboardView(VistaBase):
                     str(fecha),
                     cliente,
                     vehiculo,
-                    f"{float(precio):,.2f}"
+                    formatear_numero(precio)
                 )
                 for (
                     _, fecha, cliente,
@@ -397,7 +402,7 @@ class DashboardView(VistaBase):
                 (
                     vehiculo,
                     unidades,
-                    f"{float(importe):,.2f}"
+                    formatear_numero(importe)
                 )
                 for vehiculo, unidades, importe in top
             ]
@@ -418,7 +423,7 @@ class DashboardView(VistaBase):
                 (
                     cliente,
                     compras,
-                    f"{float(importe):,.2f}"
+                    formatear_numero(importe)
                 )
                 for cliente, compras, importe in clientes
             ]
@@ -478,11 +483,11 @@ class DashboardView(VistaBase):
                 )
 
     def dinero(self, valor):
+        """
+        Importes del panel. Delega en
+        utils.moneda para que el símbolo de la
+        moneda sea el mismo que en el resto de la
+        aplicación.
+        """
 
-        try:
-
-            return f"$ {float(valor):,.2f}"
-
-        except (TypeError, ValueError):
-
-            return "$ 0.00"
+        return formato_dinero(valor)

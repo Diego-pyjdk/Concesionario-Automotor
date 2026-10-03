@@ -23,7 +23,10 @@ import datetime
 
 import mysql.connector
 
-from database.conexion import obtener_conexion
+from database.conexion import (
+    conexiones_libres,
+    obtener_conexion
+)
 
 from database.auditoria import registrar_accion
 
@@ -369,6 +372,36 @@ def crear_contrato(
             f"Estado '{estado}' no válido."
         )
 
+    if forma_pago not in FORMAS_PAGO:
+
+        return (
+            None,
+            f"Forma de pago '{forma_pago}' no válida."
+        )
+
+    if anticipo < 0:
+
+        return (
+            None,
+            "El anticipo no puede ser negativo."
+        )
+
+    # En contado el pago es completo: no hay
+    # anticipo ni cuotas que repartir. El formulario
+    # lo avisa, pero un contrato guardado con
+    # "Contado" y 12 cuotas imprimiría una
+    # contradicción en un documento firmado.
+
+    if forma_pago == "Contado" and (
+        anticipo > 0 or cantidad_cuotas > 0
+    ):
+
+        return (
+            None,
+            "En contado no hay anticipo ni "
+            "cuotas: el pago es completo."
+        )
+
     conexion = obtener_conexion()
     cursor = conexion.cursor(dictionary=True)
 
@@ -403,6 +436,29 @@ def crear_contrato(
             return (
                 None,
                 "La venta indicada no existe."
+            )
+
+        # ------------------------------
+        # 1b. EL ANTICIPO NO PUEDE PASARSE
+        # ------------------------------
+        # El formulario ya avisa de esto, pero el
+        # contrato es un documento legal y aquí no
+        # puede quedar guardado uno con un anticipo
+        # mayor que el precio: el PDF imprimiría una
+        # cuota en negativo y el saldo no cuadraría.
+        #
+        # Solo se rechaza lo que el formulario ya
+        # rechaza, así que ninguna vía que antes
+        # funcionaba deja de funcionar.
+
+        if anticipo > float(venta["precio"]):
+
+            conexion.rollback()
+
+            return (
+                None,
+                "El anticipo no puede ser mayor que "
+                "el precio de la venta."
             )
 
         # ------------------------------
@@ -537,6 +593,7 @@ def crear_contrato(
 # CAMBIAR ESTADO
 # ==========================================
 
+@conexiones_libres
 @requiere_permiso(GESTIONAR_CONTRATOS)
 def cambiar_estado(id_contrato, estado):
     """
@@ -619,6 +676,7 @@ def cambiar_estado(id_contrato, estado):
 # PDF
 # ==========================================
 
+@conexiones_libres
 @requiere_permiso(VER_CONTRATOS)
 def registrar_pdf(id_contrato, ruta_relativa):
     """
@@ -644,6 +702,7 @@ def registrar_pdf(id_contrato, ruta_relativa):
 # ELIMINAR
 # ==========================================
 
+@conexiones_libres
 @requiere_permiso(GESTIONAR_CONTRATOS)
 def eliminar_contrato(id_contrato):
     """

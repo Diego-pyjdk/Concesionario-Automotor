@@ -7,7 +7,10 @@ from PySide6.QtWidgets import (
     QMessageBox
 )
 
+from errores import ErrorSistema
+
 from database.clientes import (
+    cliente_duplicado,
     insertar_cliente,
     actualizar_cliente
 )
@@ -22,7 +25,8 @@ from utils.validaciones import (
 from utils.helpers import (
     crear_boton_principal,
     crear_boton_secundario,
-    conectar_enter_guardar
+    conectar_enter_guardar,
+    avisar_error
 )
 
 
@@ -199,31 +203,74 @@ class ClienteForm(QDialog):
             documento = None
 
         # ------------------------------
+        # DUPLICADOS
+        # ------------------------------
+        # Sin esta comprobacion se daba de alta
+        # al mismo cliente varias veces, cada una
+        # con su historial: los reportes lo
+        # contaban como dos personas distintas.
+        # cliente_duplicado() existia desde el
+        # principio pero no lo llamaba nadie.
+
+        if cliente_duplicado(
+            nombre,
+            apellido,
+            telefono,
+            email,
+            self.cliente[0] if self.cliente else None
+        ):
+            QMessageBox.warning(
+                self,
+                "Cliente duplicado",
+                "Ya existe un cliente con ese "
+                "correo, o con el mismo nombre, "
+                "apellido y teléfono.\n\n"
+                "Edítalo en lugar de crear otro, "
+                "o cambia los datos."
+            )
+
+            return
+
+        # ------------------------------
         # GUARDAR
         # ------------------------------
 
-        if self.cliente:
-            actualizar_cliente(
-                self.cliente[0],
-                nombre,
-                apellido,
-                telefono,
-                email,
-                documento
-            )
+        try:
 
-            mensaje = "El cliente se actualizó correctamente."
+            if self.cliente:
+                actualizar_cliente(
+                    self.cliente[0],
+                    nombre,
+                    apellido,
+                    telefono,
+                    email,
+                    documento
+                )
 
-        else:
-            insertar_cliente(
-                nombre,
-                apellido,
-                telefono,
-                email,
-                documento
-            )
+                mensaje = (
+                    "El cliente se actualizó "
+                    "correctamente."
+                )
 
-            mensaje = "El cliente se guardó correctamente."
+            else:
+                insertar_cliente(
+                    nombre,
+                    apellido,
+                    telefono,
+                    email,
+                    documento
+                )
+
+                mensaje = (
+                    "El cliente se guardó "
+                    "correctamente."
+                )
+
+        except ErrorSistema as error:
+
+            avisar_error(self, error)
+
+            return
 
         QMessageBox.information(
             self,

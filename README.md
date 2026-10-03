@@ -17,6 +17,9 @@ automóviles, de escritorio, en Python.
 1. [Requisitos](#1-requisitos)
 2. [Instalación](#2-instalación-paso-a-paso)
 3. [Uso](#3-uso)
+   - [Contratos de compraventa](#contratos-de-compraventa)
+   - [Pagos y saldo](#pagos-y-saldo)
+   - [La moneda](#la-moneda)
 4. [Estructura del proyecto](#4-estructura-del-proyecto)
 5. [Roles y permisos](#5-roles-y-permisos)
 6. [Problemas frecuentes](#6-problemas-frecuentes)
@@ -257,6 +260,94 @@ Al confirmar, el PDF se genera solo y se guarda en
 `documentos/contratos/`. Desde el listado se puede
 volver a abrir con el botón **PDF**.
 
+### Pagos y saldo
+
+Cada venta tiene un saldo. Se llega desde **Ventas**,
+con el botón **Ver** de la fila: ahí se ve el precio,
+lo cobrado, lo pendiente y la lista de pagos, con su
+botón **Registrar pago**.
+
+Un pago es un hecho económico, así que **no se
+edita**: si está mal, el administrador lo borra desde
+el mismo diálogo y se vuelve a registrar. Queda
+constancia en la auditoría.
+
+La diferencia entre contrato y pago:
+
+- El **contrato** dice *qué* se debe pagar (precio,
+  anticipo, número de cuotas).
+- El **pago** dice *qué* se ha cobrado, uno a uno.
+
+Por eso el anticipo del contrato **no** descuenta
+saldo hasta que se registra como pago: si lo hiciera
+por su cuenta, el saldo cuadraría con una entrada
+que nadie vería en la lista de cobros ni podría
+explicar en un extracto bancario.
+
+Cuando la venta queda saldada, el botón de registrar
+pago se desactiva solo.
+
+Una venta con dinero cobrado **no se puede anular**.
+Primero hay que deshacer el pago.
+
+El importe tiene que ser **exacto a céntimos**. La
+columna guarda dos decimales, así que un pago de
+0.004 se redondearía a 0.00 y el dinero se perdería
+sin avisar; en vez de tragarse el redondeo, la
+aplicación lo rechaza y avisa. El formulario ya
+solo deja escribir dos decimales.
+
+### La moneda
+
+La moneda se cambia en **Configuración → Ajustes**,
+sin tocar el código y sin reiniciar. Se guarda en la
+base, así que es la misma para todo el que use el
+programa.
+
+Hay cinco ajustes:
+
+| Ajuste | Por defecto | Para qué |
+|---|---|---|
+| Código | `USD` | código ISO de la moneda |
+| Símbolo | `$` | lo que se ve junto al importe |
+| Formato | `simbolo_espacio` | cómo se juntan símbolo e importe |
+| Separador de miles | `,` | `1,500.00` o `1.500,00` |
+| Separador de decimales | `.` | `1,500.00` o `1.500,00` |
+
+Los formatos admitidos, con `1234.50` como ejemplo:
+
+| Formato | Resultado |
+|---|---|
+| `simbolo_espacio` | `$ 1,234.50` |
+| `simbolo_pegado` | `$1,234.50` |
+| `simbolo_despues` | `1,234.50 $` |
+| `codigo_espacio` | `USD 1,234.50` |
+| `codigo_pegado` | `USD1,234.50` |
+| `codigo_despues` | `1,234.50 USD` |
+
+**Para facturar en euros**: código `EUR`, símbolo
+`€`, formato `simbolo_despues` (lo normal en
+Europa), separador de miles `.` y de decimales `,`.
+Sale `1.234,50 €`.
+
+Mientras escribes, el panel enseña cómo quedaría,
+sin guardar. El separador de miles y el de decimales
+**no pueden ser el mismo**: `1.234.56` y `1.234,56`
+se leerían igual.
+
+El cambio afecta a todas partes a la vez: los
+listados, el detalle de una venta, los contratos, el
+PDF y los reportes. Las tablas de los listados no
+llevan símbolo (no lo han llevado nunca), pero sí
+siguen los separadores.
+
+> Si tienes una base que ya estaba funcionando, la
+> moneda se pone por su cuenta al leer los ajustes:
+> aunque no existan esas cinco claves, la aplicación
+> usa los valores por defecto, que son exactamente
+> los de siempre. Si quieres verlas y poder
+> cambiarlas, aplica `database/migracion_moneda.sql`.
+
 ### Atajos de teclado
 
 | Tecla | Dónde | Qué hace |
@@ -276,11 +367,19 @@ concesionario/
 ├── crear_admin.py              Administrador inicial
 ├── verificar_instalacion.py    Diagnóstico de la instalación
 ├── requirements.txt            Dependencias
+├── pytest.ini                  Configuración de las pruebas
 ├── .env.example                Plantilla de configuración
 │
 ├── sesion.py                   Usuario en sesión
 ├── permisos.py                 Permisos por rol
 ├── errores.py                  Errores controlados
+│
+├── tests/                      Pruebas automáticas (pytest)
+│   ├── conftest.py             Base de prueba y fixtures
+│   ├── test_marcas.py          test_clientes.py
+│   ├── test_autos.py           test_ventas.py
+│   ├── test_contratos.py       test_usuarios.py
+│   ├── test_pagos.py           test_reportes.py
 │
 ├── database/                   Acceso a datos (todo el SQL aquí)
 │   ├── conexion.py             Lee el .env y abre conexiones
@@ -289,8 +388,13 @@ concesionario/
 │   ├── clientes.py             ventas.py
 │   ├── usuarios.py             auditoria.py
 │   ├── contratos.py            Contratos de compraventa
+│   ├── pagos.py                Cobros y saldo de cada venta
 │   ├── configuracion.py        Ajustes
 │   ├── migracion_contratos.sql Para bases ya existentes
+│   ├── migracion_indices.sql   Índices y marcas únicas
+│   ├── migracion_ventas_usuario.sql  Quién registró cada venta
+│   ├── migracion_pagos.sql     Tabla de pagos
+│   ├── migracion_moneda.sql    Claves de moneda configurable
 │   └── reportes.py             Estadísticas y agregados
 │
 ├── gui/                        Interfaz
@@ -409,6 +513,37 @@ Qué hace, exactamente:
 
 No borra ni modifica ninguna fila.
 
+### Ya tenía datos y quiero los índices
+
+La aplicación nueva lleva tres cosas que una
+base creada antes no tiene:
+
+- un índice en `ventas.fecha` (los reportes
+  filtran por rango de fechas)
+- un índice en `contratos.fecha`
+- `marcas.nombre` no puede repetirse
+
+```bash
+mysql -u root -p concesionario < database/migracion_indices.sql
+```
+
+**Antes de aplicarlo, comprueba que no tengas
+marcas repetidas**, porque el UNIQUE las
+rechazaría. El archivo lleva la consulta:
+
+```sql
+SELECT nombre, COUNT(*) c
+FROM marcas
+GROUP BY LOWER(TRIM(nombre))
+HAVING c > 1;
+```
+
+Si no devuelve nada, puedes seguir. Si devuelve
+algo, renombra o fusiona esas marcas desde la
+aplicación primero.
+
+También aquí: ni una fila se toca.
+
 ### El PDF del contrato no sale
 
 Mira `documentos/contratos/` dentro del proyecto.
@@ -470,3 +605,45 @@ ya. **Léelo antes de tocar nada.**
 Y ejecuta `verificar_instalacion.py` antes de
 suponer que el entorno está bien: avisa de
 problemas que a simple vista no se ven.
+
+### Pruebas
+
+Hay una batería con [pytest](https://docs.pytest.org/)
+en `tests/`:
+
+```
+venv\Scripts\python.exe -m pytest
+```
+
+Son 255 pruebas. **No tocan tus datos**: cada
+sesión levanta una base temporal llamada
+`pruebas_concesionario` a partir de
+`database/esquema.sql` —es decir, una
+instalación limpia hecha de cero—, fija
+`DB_NAME` en el entorno para que toda la
+aplicación hable con ella y la borra al
+terminar. Puedes trabajar con la base real
+mientras corren.
+
+Si algo se queda esperando, añade
+`-o faulthandler_timeout=10` para ver dónde:
+sin eso, un cuelgue no dice absolutamente nada.
+
+Para añadir una dependencia solo de las
+pruebas, instálala sin tocar `requirements.txt`:
+
+```
+venv\Scripts\python.exe -m pip install pytest
+```
+
+`pytest` no hace falta para usar la aplicación,
+solo para tocarla.
+
+### Lo que las pruebas no detectan
+
+Compilar no encuentra un nombre mal escrito
+dentro de un método: solo falla al construir el
+widget. Si añades una vista o un formulario,
+**constrúyelo** antes de darlo por bueno. La
+comprobación completa está en `AGENTS.md`, en
+"Verificación".

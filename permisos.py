@@ -151,21 +151,15 @@ def tiene_permiso(permiso):
     return permiso in permisos_actuales()
 
 
-def puede_ver(permiso):
-    return tiene_permiso(permiso)
-
-
-def puede_gestionar(permiso):
-    return tiene_permiso(permiso)
-
-
-def exigir(permiso):
-    """
-    Comprueba un permiso sin lanzar excepción.
-    Pensado para la interfaz.
-    """
-
-    return tiene_permiso(permiso)
+# Antes había aquí tres alias de tiene_permiso()
+# (puede_ver, puede_gestionar y exigir) que no
+# usaba nadie y solo ocultaban que la
+# comprobación es una sola. El atributo
+# self.puede_gestionar de las vistas no tiene
+# nada que ver con ellos: es un parámetro.
+#
+# A partir de aquí se escribe tiene_permiso()
+# siempre.
 
 
 # ==========================================

@@ -45,7 +45,13 @@ CREATE TABLE marcas (
 
     nombre VARCHAR(50) NOT NULL,
 
-    PRIMARY KEY (id)
+    PRIMARY KEY (id),
+
+    -- Sin esto se pueden dar de alta "BMW",
+    -- "bmw" y "Bmw" como tres marcas distintas
+    -- y el mismo vehiculo aparece con nombres
+    -- diferentes en cada pantalla.
+    UNIQUE KEY uq_marcas_nombre (nombre)
 
 );
 
@@ -109,41 +115,6 @@ CREATE TABLE clientes (
 
 
 -- ==========================================
--- VENTAS
--- ==========================================
--- Une cliente y vehículo (1:N con ambos).
--- "precio" guarda el valor de la venta en el
--- momento de realizarla, para que un cambio
--- posterior en autos.precio no altere el
--- histórico.
--- ==========================================
-
-CREATE TABLE ventas (
-
-    id INT NOT NULL AUTO_INCREMENT,
-
-    cliente_id INT NOT NULL,
-
-    auto_id INT NOT NULL,
-
-    fecha DATE NOT NULL,
-
-    precio DECIMAL(10, 2) NOT NULL,
-
-    PRIMARY KEY (id),
-
-    CONSTRAINT ventas_cliente_fk
-        FOREIGN KEY (cliente_id)
-        REFERENCES clientes (id),
-
-    CONSTRAINT ventas_auto_fk
-        FOREIGN KEY (auto_id)
-        REFERENCES autos (id)
-
-);
-
-
--- ==========================================
 -- USUARIOS
 -- ==========================================
 -- Acceso al sistema.
@@ -190,6 +161,71 @@ CREATE TABLE usuarios (
     PRIMARY KEY (id),
 
     UNIQUE KEY uq_usuarios_nombre (nombre_usuario)
+
+);
+
+
+-- ==========================================
+-- VENTAS
+-- ==========================================
+-- Une cliente y vehículo (1:N con ambos).
+-- "precio" guarda el valor de la venta en el
+-- momento de realizarla, para que un cambio
+-- posterior en autos.precio no altere el
+-- histórico.
+-- ==========================================
+
+CREATE TABLE ventas (
+
+    id INT NOT NULL AUTO_INCREMENT,
+
+    cliente_id INT NOT NULL,
+
+    auto_id INT NOT NULL,
+
+    usuario_id INT NULL,
+
+    -- Copia del nombre, igual que en auditoria.
+    -- Borrar la cuenta de un vendedor pone
+    -- usuario_id a NULL, pero el nombre se queda:
+    -- si no, perderias el dato de quien hizo la
+    -- venta.
+    usuario_nombre VARCHAR(50) NULL,
+
+    fecha DATE NOT NULL,
+
+    precio DECIMAL(10, 2) NOT NULL,
+
+    PRIMARY KEY (id),
+
+    -- Los reportes filtran por rango de fechas
+    -- y el resumen del panel busca las ventas de
+    -- HOY. Sin este indice, cada reporte es un
+    -- recorrido completo de la tabla y se nota
+    -- a partir de unos miles de ventas.
+    KEY ix_ventas_fecha (fecha),
+
+    -- Para el reporte de ventas por vendedor.
+    KEY ix_ventas_usuario (usuario_id),
+
+    CONSTRAINT ventas_cliente_fk
+        FOREIGN KEY (cliente_id)
+        REFERENCES clientes (id),
+
+    CONSTRAINT ventas_auto_fk
+        FOREIGN KEY (auto_id)
+        REFERENCES autos (id),
+
+    -- SET NULL y no CASCADE: borrar la cuenta de
+    -- un vendedor no puede borrar sus ventas. El
+    -- nombre copiado mas arriba se queda, asi que
+    -- el historico sigue diciendo quien vendio
+    -- cada vehiculo aunque la cuenta desaparezca.
+
+    CONSTRAINT ventas_usuario_fk
+        FOREIGN KEY (usuario_id)
+        REFERENCES usuarios (id)
+        ON DELETE SET NULL
 
 );
 
@@ -374,6 +410,95 @@ CREATE TABLE contratos (
 
 
 -- ==========================================
+-- PAGOS
+-- ==========================================
+-- Cada entrada de dinero que entra por una venta.
+--
+-- Un contrato dice QUÉ se debe pagar; esta tabla
+-- dice QUÉ se ha pagado. Son cosas distintas y
+-- no se mezclan: el contrato se firma una vez,
+-- los pagos se registran uno a uno.
+--
+-- "importe" siempre positivo: un pago que
+-- devuelve dinero no es un pago negativo, es otro
+-- movimiento, y así el saldo nunca se explica por
+-- una resta rara.
+--
+-- "contrato_id" es opcional: una venta en
+-- efectivo puede cobrarse sin llegar a firmar
+-- contrato. Cuando hay contrato, se guarda el
+-- suyo para poder consultarlo sin tener que
+-- buscarlo.
+--
+-- usuario_nombre es una copia, como en ventas y
+-- auditoria: borrar la cuenta no borra quién
+-- cobró.
+-- ==========================================
+
+CREATE TABLE pagos (
+
+    id INT NOT NULL AUTO_INCREMENT,
+
+    venta_id INT NOT NULL,
+
+    contrato_id INT DEFAULT NULL,
+
+    fecha DATE NOT NULL,
+
+    importe DECIMAL(10, 2) NOT NULL,
+
+    forma VARCHAR(40) NOT NULL,
+
+    -- Número de operación, cheque, etc. Lo que
+    -- haga falta para localizar el movimiento
+    -- en un extracto bancario.
+
+    referencia VARCHAR(100) DEFAULT NULL,
+
+    concepto VARCHAR(255) DEFAULT NULL,
+
+    usuario_id INT DEFAULT NULL,
+
+    usuario_nombre VARCHAR(50) DEFAULT NULL,
+
+    fecha_registro DATETIME NOT NULL
+        DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+
+    -- El saldo de una venta se calcula sumando sus
+    -- pagos: sin índice, cada consulta es un
+    -- recorrido completo.
+
+    KEY ix_pagos_venta (venta_id),
+
+    -- Para el reporte de cobros por periodo.
+
+    KEY ix_pagos_fecha (fecha),
+
+    -- ON DELETE RESTRICT, no CASCADE: si ya se
+    -- cobró algo, la venta ya no se puede anular
+    -- en silencio. Habría que deshacer antes el
+    -- pago, que es justo lo que no se quiere.
+
+    CONSTRAINT pagos_venta_fk
+        FOREIGN KEY (venta_id)
+        REFERENCES ventas (id)
+        ON DELETE RESTRICT,
+
+    CONSTRAINT pagos_contrato_fk
+        FOREIGN KEY (contrato_id)
+        REFERENCES contratos (id)
+        ON DELETE RESTRICT,
+
+    CONSTRAINT pagos_usuario_fk
+        FOREIGN KEY (usuario_id)
+        REFERENCES usuarios (id)
+        ON DELETE SET NULL
+);
+
+
+-- ==========================================
 -- DATOS INICIALES
 -- ==========================================
 -- Sin marcas no se puede crear un vehículo:
@@ -401,3 +526,33 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
     ('stock_minimo',
      '3',
      'Un vehículo con stock menor o igual a este valor aparece como stock bajo.');
+
+-- Moneda.
+--
+-- Estos valores reproducen exactamente lo que
+-- mostraba la aplicación cuando el "$ " estaba
+-- escrito dentro del código: "USD", "$",
+-- "simbolo_espacio", "," y ".". Por eso
+-- instalar desde cero no cambia ni un importe de
+-- los que se ven.
+--
+-- Cambiarlos aquí es solo el valor inicial: se
+-- cambian de verdad desde Configuración, que
+-- además los aplica sin reiniciar.
+
+INSERT INTO configuracion (clave, valor, descripcion) VALUES
+    ('moneda_codigo',
+     'USD',
+     'Código de la moneda (USD, EUR, MXN...). Se muestra en los formatos que usan código en vez de símbolo.'),
+    ('moneda_simbolo',
+     '$',
+     'Símbolo de la moneda, como $ o €.'),
+    ('moneda_formato',
+     'simbolo_espacio',
+     'Cómo se juntan el símbolo y el importe: simbolo_espacio, simbolo_pegado, simbolo_despues, codigo_espacio, codigo_pegado o codigo_despues.'),
+    ('moneda_separador_miles',
+     ',',
+     'Separador de millares. Con ''.'' son 1.500,00.'),
+    ('moneda_separador_decimales',
+     '.',
+     'Separador de decimales. Con '','' son 1.500,00.');

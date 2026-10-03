@@ -1,5 +1,7 @@
 # ==========================================
 # PDF DEL CONTRATO
+
+
 # ==========================================
 # Maqueta el documento con los datos que ya
 # trae database/contratos.py.
@@ -18,11 +20,15 @@
 # La banda superior y el pie se dibujan en
 # _pintar_cabecera y _pintar_pie, que reportlab
 # llama una vez por hoja.
+
+
 # ==========================================
 
 
 import datetime
 import os
+
+import utils.moneda as _moneda
 
 from database.configuracion import NOMBRE_SISTEMA
 
@@ -53,6 +59,8 @@ from reportlab.platypus import (
 
 # ==========================================
 # RUTAS
+
+
 # ==========================================
 # Los PDF se guardan junto al proyecto para que
 # el usuario los encuentre sin buscar.
@@ -125,15 +133,16 @@ def formato_fecha(valor):
 def formato_dinero(valor):
     """
     Importe con separador de miles.
+
+    El símbolo de la moneda sale de la
+    configuración: aquí solo se delega en
+    utils.moneda, que es el único sitio donde
+    vive. Se mantiene esta función porque el PDF,
+    los reportes y las vistas la usan por todas
+    partes.
     """
 
-    try:
-
-        return f"$ {float(valor):,.2f}"
-
-    except (TypeError, ValueError):
-
-        return "$ 0.00"
+    return _moneda.formato_dinero(valor)
 
 
 def cuota_importe(contrato):
@@ -188,6 +197,8 @@ def color_estado(estado):
 
 # ==========================================
 # PALETA
+
+
 # ==========================================
 # La misma del gui/estilo.css, para que el PDF
 # se parezca a la aplicación.
@@ -203,6 +214,8 @@ AZUL = colors.HexColor("#2563eb")
 
 # ==========================================
 # ESTILOS
+
+
 # ==========================================
 
 def construir_estilos():
@@ -377,6 +390,8 @@ def construir_estilos():
 
 # ==========================================
 # PIEZAS
+
+
 # ==========================================
 
 def tabla_una_columna(contenido, estilos):
@@ -653,6 +668,8 @@ def bloque_firmas(contrato, estilos):
 
 # ==========================================
 # HOJA Y PLANTILLA
+
+
 # ==========================================
 
 def _pintar_cabecera(lienzo, documento):
@@ -856,6 +873,8 @@ def construir_documento(ruta, contrato):
 
 # ==========================================
 # GENERACIÓN
+
+
 # ==========================================
 
 def generar_contrato(contrato, ruta=None):
@@ -1267,17 +1286,3 @@ def sustituir_no_mapeables(texto):
             limpio.append("?")
 
     return "".join(limpio)
-
-
-def existe_pdf(contrato):
-    """
-    Si el PDF ya está en disco.
-    """
-
-    if not contrato.get("numero"):
-
-        return False
-
-    return os.path.exists(
-        ruta_documento(contrato["numero"])
-    )

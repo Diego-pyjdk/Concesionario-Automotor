@@ -4,6 +4,8 @@ from database.autos import (
     eliminar_auto as eliminar_auto_db
 )
 
+from utils.moneda import formatear_numero
+
 from utils.helpers import (
     crear_botones_accion
 )
@@ -68,7 +70,7 @@ class AutosView(VistaListado):
                 marca,
                 modelo,
                 anio,
-                f"{float(precio):,.2f}",
+                formatear_numero(precio),
                 color,
                 stock
             ],

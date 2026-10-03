@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (
     QMessageBox
 )
 
+from errores import ErrorSistema
+
 from database.marcas import obtener_marcas
 
 from utils.validaciones import (
@@ -23,7 +25,8 @@ from utils.validaciones import (
 from utils.helpers import (
     crear_boton_principal,
     crear_boton_secundario,
-    conectar_enter_guardar
+    conectar_enter_guardar,
+    avisar_error
 )
 
 
@@ -185,31 +188,46 @@ class AutoForm(QDialog):
         color = self.campo_color.text().strip()
         stock = self.campo_stock.value()
 
-        if self.auto:
-            id_auto = self.auto[0]
+        try:
 
-            actualizar_auto(
-                id_auto,
-                marca_id,
-                modelo,
-                anio,
-                precio,
-                color,
-                stock
-            )
+            if self.auto:
+                id_auto = self.auto[0]
 
-            mensaje = "El vehículo se actualizó correctamente."
-        else:
-            insertar_auto(
-                marca_id,
-                modelo,
-                anio,
-                precio,
-                color,
-                stock
-            )
+                actualizar_auto(
+                    id_auto,
+                    marca_id,
+                    modelo,
+                    anio,
+                    precio,
+                    color,
+                    stock
+                )
 
-            mensaje = "El vehículo se guardó correctamente."
+                mensaje = (
+                    "El vehículo se actualizó "
+                    "correctamente."
+                )
+
+            else:
+                insertar_auto(
+                    marca_id,
+                    modelo,
+                    anio,
+                    precio,
+                    color,
+                    stock
+                )
+
+                mensaje = (
+                    "El vehículo se guardó "
+                    "correctamente."
+                )
+
+        except ErrorSistema as error:
+
+            avisar_error(self, error)
+
+            return
 
         QMessageBox.information(
             self,

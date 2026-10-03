@@ -4,6 +4,8 @@ from database.conexion import obtener_conexion
 
 from database.auditoria import registrar_accion
 
+import sesion as modulo_sesion
+
 from permisos import (
     requiere_permiso,
     REGISTRAR_VENTAS,
@@ -13,6 +15,8 @@ from permisos import (
 
 # =============================
 # LISTAR
+
+
 # =============================
 
 def obtener_ventas(desde=None, hasta=None, texto=None):
@@ -22,6 +26,16 @@ def obtener_ventas(desde=None, hasta=None, texto=None):
 
     desde / hasta son fechas opcionales (YYYY-MM-DD).
     texto filtra por cliente o vehículo.
+
+    Contrato de columnas: id, fecha, cliente,
+    vehiculo, precio, usuario_nombre. La última
+    puede venir a None en las ventas anteriores a
+    la migración del vendedor; quien la pinte debe
+    poner algo legible en su lugar, no un hueco.
+
+    Está escrito en tres sitios más:
+    VentasView.pintar_fila, VentasView.ver_venta
+    y el ancho de columna en VentasView.columnas.
     """
 
     conexion = obtener_conexion()
@@ -41,7 +55,8 @@ def obtener_ventas(desde=None, hasta=None, texto=None):
                 ' ',
                 autos.modelo
             ) AS vehiculo,
-            ventas.precio
+            ventas.precio,
+            ventas.usuario_nombre
         FROM ventas
         INNER JOIN clientes
             ON ventas.cliente_id = clientes.id
@@ -151,46 +166,9 @@ def obtener_ventas_recientes(limite=5):
 
 
 # =============================
-# TOTALES
-# =============================
-
-def obtener_total_vendido(desde=None, hasta=None):
-
-    conexion = obtener_conexion()
-    cursor = conexion.cursor()
-
-    consulta = """
-        SELECT
-            COUNT(*),
-            COALESCE(SUM(precio), 0)
-        FROM ventas
-        WHERE 1 = 1
-    """
-
-    valores = []
-
-    if desde:
-        consulta += " AND fecha >= %s"
-
-        valores.append(desde)
-
-    if hasta:
-        consulta += " AND fecha <= %s"
-
-        valores.append(hasta)
-
-    cursor.execute(consulta, tuple(valores))
-
-    total, importe = cursor.fetchone()
-
-    cursor.close()
-    conexion.close()
-
-    return total, importe
-
-
-# =============================
 # EXISTENCIA
+
+
 # =============================
 
 def contar_ventas_de_auto(id_auto):
@@ -216,6 +194,8 @@ def contar_ventas_de_auto(id_auto):
 
 # =============================
 # REGISTRAR VENTA
+
+
 # =============================
 
 @requiere_permiso(REGISTRAR_VENTAS)
@@ -276,16 +256,40 @@ def registrar_venta(cliente_id, auto_id, fecha, precio):
         # ------------------------------
         # 2. INSERTAR VENTA
         # ------------------------------
+        # Se guarda QUIÉN registró la venta, no solo
+        # el cliente y el vehículo.
+        #
+        # usuario_nombre es una copia, igual que en
+        # auditoria: si luego se borra la cuenta,
+        # usuario_id pasa a NULL pero el nombre se
+        # queda y el histórico sigue diciendo quién
+        # vendió cada vehículo.
+
+        usuario = modulo_sesion.obtener_sesion()
 
         consulta_venta = """
             INSERT INTO ventas
-            (cliente_id, auto_id, fecha, precio)
-            VALUES (%s, %s, %s, %s)
+            (
+                cliente_id,
+                auto_id,
+                usuario_id,
+                usuario_nombre,
+                fecha,
+                precio
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
         """
 
         cursor.execute(
             consulta_venta,
-            (cliente_id, auto_id, fecha, precio)
+            (
+                cliente_id,
+                auto_id,
+                usuario.id_usuario,
+                usuario.nombre_usuario,
+                fecha,
+                precio
+            )
         )
 
         id_venta = cursor.lastrowid
@@ -341,6 +345,8 @@ def registrar_venta(cliente_id, auto_id, fecha, precio):
 
 # =============================
 # ELIMINAR
+
+
 # =============================
 
 @requiere_permiso(GESTIONAR_VENTAS)
@@ -408,6 +414,61 @@ def eliminar_venta(id_venta):
         contrato = cursor.fetchone()
 
         if contrato and contrato[1] != "cancelado":
+            conexion.rollback()
+
+            cursor.close()
+            conexion.close()
+
+            return False
+
+        # Un contrato cancelado no surte efecto, pero
+        # su fila sigue apuntando a la venta y la
+        # clave foranea (ON DELETE RESTRICT) impediría
+        # el DELETE. Hay que llevárselo delante, en la
+        # misma transacción.
+        #
+        # Es lo mismo que hace crear_contrato() cuando
+        # rehace uno cancelado. Si aquí no se borrara,
+        # la promesa de "cancelado no bloquea" sería
+        # falsa y el DELETE saltaría por la excepción
+        # devolviendo un False sin motivo aparente.
+
+        if contrato:
+            cursor.execute(
+                """
+                DELETE FROM contratos
+                WHERE venta_id = %s
+                    AND estado = 'cancelado'
+                """,
+                (id_venta,)
+            )
+
+        # ------------------------------
+        # PAGOS COBRADOS
+        # ------------------------------
+        # Si ya entró dinero, la venta no se anula
+        # en silencio. La clave foránea de pagos
+        # (ON DELETE RESTRICT) también lo impediría,
+        # pero saltar por esa excepción daría un
+        # False sin explicación.
+        #
+        # A diferencia del contrato cancelado, aquí
+        # no hay nada que borrar antes: un pago es
+        # un hecho económico y deshacerlo es una
+        # operación aparte, y por eso la decide
+        # pagos.eliminar_pago(), que exige permiso
+        # de administrador y deja rastro.
+
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM pagos
+            WHERE venta_id = %s
+            """,
+            (id_venta,)
+        )
+
+        if cursor.fetchone()[0] > 0:
             conexion.rollback()
 
             cursor.close()

@@ -27,6 +27,8 @@ from PySide6.QtWidgets import (
     QMessageBox
 )
 
+from errores import ErrorSistema
+
 from database.contratos import (
     crear_contrato,
     obtener_contrato,
@@ -43,7 +45,8 @@ from utils.validaciones import (
 from utils.helpers import (
     crear_boton_principal,
     crear_boton_secundario,
-    conectar_enter_guardar
+    conectar_enter_guardar,
+    avisar_error
 )
 
 from utils.contrato_pdf import (
@@ -51,9 +54,11 @@ from utils.contrato_pdf import (
     ruta_relativa
 )
 
+from utils.moneda import formato_dinero
 
-def formato_dinero(valor):
-    return f"$ {float(valor):,.2f}"
+# El símbolo de la moneda vive en utils.moneda. Aquí
+# no se escribe ninguno: si lo hiciera, cambiar la
+# moneda no tocaría este formulario.
 
 
 class ContratoForm(QDialog):
@@ -444,13 +449,21 @@ class ContratoForm(QDialog):
         # GUARDAR
         # ------------------------------
 
-        id_contrato, motivo = crear_contrato(
-            venta_id=id_venta,
-            forma_pago=forma_pago,
-            anticipo=float(anticipo_texto),
-            cantidad_cuotas=cuotas,
-            observaciones=observaciones or None
-        )
+        try:
+
+            id_contrato, motivo = crear_contrato(
+                venta_id=id_venta,
+                forma_pago=forma_pago,
+                anticipo=float(anticipo_texto),
+                cantidad_cuotas=cuotas,
+                observaciones=observaciones or None
+            )
+
+        except ErrorSistema as error:
+
+            avisar_error(self, error)
+
+            return
 
         if id_contrato is None:
 
@@ -479,7 +492,17 @@ class ContratoForm(QDialog):
         Crea el PDF nada más guardar el contrato.
         """
 
-        contrato = obtener_contrato(id_contrato)
+        try:
+
+            contrato = obtener_contrato(id_contrato)
+
+        except ErrorSistema as error:
+
+            avisar_error(self, error)
+
+            self.accept()
+
+            return
 
         if not contrato:
             return
@@ -502,10 +525,21 @@ class ContratoForm(QDialog):
 
             return
 
-        registrar_pdf(
-            id_contrato,
-            ruta_relativa(contrato["numero"])
-        )
+        # Anotar dónde quedó el archivo es
+        # informativo: si falla, el contrato ya
+        # está guardado y el PDF existe, así que
+        # no se pierde nada por avisar.
+
+        try:
+
+            registrar_pdf(
+                id_contrato,
+                ruta_relativa(contrato["numero"])
+            )
+
+        except ErrorSistema:
+
+            pass
 
         QMessageBox.information(
             self,

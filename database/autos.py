@@ -1,4 +1,7 @@
-from database.conexion import obtener_conexion
+from database.conexion import (
+    conexiones_libres,
+    obtener_conexion
+)
 
 from database.ventas import contar_ventas_de_auto
 
@@ -40,6 +43,7 @@ def obtener_autos():
     return autos
 
 
+@conexiones_libres
 @requiere_permiso(GESTIONAR_VEHICULOS)
 def insertar_auto(marca_id, modelo, anio, precio, color, stock):
 
@@ -80,6 +84,7 @@ def insertar_auto(marca_id, modelo, anio, precio, color, stock):
     return id_auto
 
 
+@conexiones_libres
 @requiere_permiso(GESTIONAR_VEHICULOS)
 def actualizar_auto(
     id_auto,
@@ -130,6 +135,7 @@ def actualizar_auto(
     )
 
 
+@conexiones_libres
 @requiere_permiso(GESTIONAR_VEHICULOS)
 def eliminar_auto(id_auto):
     """
@@ -206,110 +212,9 @@ def buscar_autos(texto):
 
 
 # =============================
-# STOCK
-# =============================
-# Las siguientes consultas devuelven las mismas
-# 7 columnas y en el mismo orden que obtener_autos
-# para que las vistas puedan reutilizar la misma
-# tabla sin transformaciones.
-# =============================
-
-def obtener_autos_disponibles():
-
-    conexion = obtener_conexion()
-    cursor = conexion.cursor()
-
-    consulta = """
-        SELECT
-            autos.id,
-            marcas.nombre,
-            autos.modelo,
-            autos.anio,
-            autos.precio,
-            autos.color,
-            autos.stock
-        FROM autos
-        INNER JOIN marcas
-            ON autos.marca_id = marcas.id
-        WHERE autos.stock > 0
-        ORDER BY autos.id DESC
-    """
-
-    cursor.execute(consulta)
-
-    autos = cursor.fetchall()
-
-    cursor.close()
-    conexion.close()
-
-    return autos
-
-
-def obtener_autos_sin_stock():
-
-    conexion = obtener_conexion()
-    cursor = conexion.cursor()
-
-    consulta = """
-        SELECT
-            autos.id,
-            marcas.nombre,
-            autos.modelo,
-            autos.anio,
-            autos.precio,
-            autos.color,
-            autos.stock
-        FROM autos
-        INNER JOIN marcas
-            ON autos.marca_id = marcas.id
-        WHERE autos.stock = 0
-        ORDER BY autos.id DESC
-    """
-
-    cursor.execute(consulta)
-
-    autos = cursor.fetchall()
-
-    cursor.close()
-    conexion.close()
-
-    return autos
-
-
-def obtener_autos_stock_bajo(limite):
-
-    conexion = obtener_conexion()
-    cursor = conexion.cursor()
-
-    consulta = """
-        SELECT
-            autos.id,
-            marcas.nombre,
-            autos.modelo,
-            autos.anio,
-            autos.precio,
-            autos.color,
-            autos.stock
-        FROM autos
-        INNER JOIN marcas
-            ON autos.marca_id = marcas.id
-        WHERE autos.stock > 0
-            AND autos.stock <= %s
-        ORDER BY autos.stock ASC, autos.id DESC
-    """
-
-    cursor.execute(consulta, (limite,))
-
-    autos = cursor.fetchall()
-
-    cursor.close()
-    conexion.close()
-
-    return autos
-
-
-# =============================
 # VENTAS
+
+
 # =============================
 
 def obtener_autos_para_venta():

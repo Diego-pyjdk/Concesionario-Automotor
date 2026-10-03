@@ -8,10 +8,20 @@ from database.contratos import (
     venta_bloqueada_por_contrato
 )
 
+from database.pagos import (
+    saldo_venta,
+    obtener_pagos,
+    eliminar_pago,
+    venta_bloqueada_por_pagos
+)
+
 from permisos import (
     tiene_permiso,
-    CREAR_CONTRATOS
+    CREAR_CONTRATOS,
+    GESTIONAR_VENTAS
 )
+
+from utils.moneda import formatear_numero
 
 from utils.helpers import (
     crear_botones_accion,
@@ -24,6 +34,8 @@ from gui.formularios.venta_form import VentaForm
 
 from gui.formularios.contrato_form import ContratoForm
 
+from gui.detalle_venta_dialog import DetalleVentaDialog
+
 
 class VentasView(VistaListado):
 
@@ -35,10 +47,11 @@ class VentasView(VistaListado):
         "Cliente",
         "Vehículo",
         "Precio",
+        "Vendedor",
         "Acciones"
     ]
 
-    columna_acciones = 5
+    columna_acciones = 6
 
     ANCHO_VER = 56
 
@@ -63,7 +76,7 @@ class VentasView(VistaListado):
         "aquí."
     )
 
-    anchos_fijos = {1: 110, 4: 120}
+    anchos_fijos = {1: 110, 4: 120, 5: 110}
 
     def __init__(
         self,
@@ -98,7 +111,8 @@ class VentasView(VistaListado):
             fecha,
             cliente,
             vehiculo,
-            precio
+            precio,
+            vendedor
         ) = venta
 
         self.marcar_columnas(
@@ -108,7 +122,12 @@ class VentasView(VistaListado):
                 str(fecha),
                 cliente,
                 vehiculo,
-                f"{float(precio):,.2f}"
+                formatear_numero(precio),
+                # Las ventas anteriores a la
+                # migración del vendedor no
+                # tienen nombre: se dice, en vez
+                # de dejar un hueco.
+                vendedor or "Sin registrar"
             ],
             centrar={0, 1}
         )
@@ -228,35 +247,39 @@ class VentasView(VistaListado):
 
     def ver_venta(self, fila):
         """
-        Detalle de solo lectura: una venta es
-        histórico y no se edita.
+        Detalle de la venta: datos, saldo y pagos.
+
+        La venta no se edita (es histórico), pero sí
+        se le registran pagos encima. Por eso este
+        diálogo no es un simple aviso de texto: lleva
+        su propia tabla y su botón.
         """
 
-        titulos = [
-            "ID",
-            "Fecha",
-            "Cliente",
-            "Vehículo",
-            "Precio"
-        ]
+        id_venta = self.leer_id_venta(fila)
 
-        lineas = []
+        if id_venta is None:
 
-        for columna, titulo in enumerate(titulos):
-
-            item = self.tabla.item(fila, columna)
-
-            if item:
-
-                lineas.append(
-                    f"{titulo}: {item.text()}"
-                )
-
-        if not lineas:
+            self.mostrar_error(
+                "No se encontró la venta."
+            )
 
             return
 
-        self.mostrar_exito("\n".join(lineas))
+        venta = self.buscar_venta(id_venta)
+
+        if venta is None:
+
+            self.mostrar_error(
+                "No se encontró la venta."
+            )
+
+            return
+
+        DetalleVentaDialog(
+            self,
+            venta,
+            saldo_venta
+        ).exec()
 
     # =============================
     # CONTRATO

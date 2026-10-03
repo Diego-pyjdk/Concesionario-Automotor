@@ -325,8 +325,18 @@ def comprobar_esquema():
         "marcas", "autos", "clientes",
         "ventas", "usuarios",
         "configuracion", "auditoria",
-        "contratos"
+        "contratos", "pagos"
     ]
+
+    # Cada tabla que falte dice qué migración
+    # aplicar, en vez de mandar siempre a la de
+    # contratos: si a alguien le falta pagos, la
+    # de contratos no le va a servir de nada.
+
+    AYUDA_MIGRACION = {
+        "contratos": "database/migracion_contratos.sql",
+        "pagos": "database/migracion_pagos.sql"
+    }
 
     cursor.execute("SHOW TABLES")
 
@@ -340,16 +350,30 @@ def comprobar_esquema():
 
             ok(f"Tabla {tabla}")
 
+            continue
+
+        migracion = AYUDA_MIGRACION.get(tabla)
+
+        if migracion:
+
+            pista = (
+                f"Ejecute {migracion}: no borra "
+                "ninguna fila."
+            )
+
         else:
 
-            fallo(
-                f"Falta la tabla {tabla}.",
+            pista = (
                 "En una base nueva, ejecute "
-                "database/esquema.sql.\n"
-                "En una base que ya tenía datos, "
-                "ejecute database/migracion_"
-                "contratos.sql: no borra nada."
+                "database/esquema.sql.\nEn una base "
+                "que ya tenía datos, aplique la "
+                "migración correspondiente."
             )
+
+        fallo(
+            f"Falta la tabla {tabla}.",
+            pista
+        )
 
     # La tabla contratos no sirve de nada sin
     # la columna documento de clientes: el PDF

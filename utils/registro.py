@@ -11,6 +11,7 @@
 
 
 import logging
+import logging.handlers
 import os
 import traceback
 
@@ -27,6 +28,18 @@ RAIZ = os.path.dirname(
 
 RUTA = os.path.join(RAIZ, NOMBRE_ARCHIVO)
 
+# Tamaño máximo de cada archivo y cuántas copias
+# se guardan. Sin esto el log crecía sin
+# límite: en una máquina con uso normal llegó a
+# pesar casi un megabyte y ya no servía para
+# buscar nada.
+#
+# Con 2 MB y 3 copias el disco se queda en unos
+# 6 MB como mucho.
+TAMANO_MAXIMO = 2 * 1024 * 1024
+
+COPIAS = 3
+
 
 _configurado = False
 
@@ -38,6 +51,11 @@ _configurado = False
 def configurar():
     """
     Prepara el logging una sola vez.
+
+    Usa RotatingFileHandler: cuando el archivo
+    llega a TAMANO_MAXIMO se renombra a .1, el
+    anterior pasa a .2 y el más viejo se
+    borra. Así el log nunca crece sin límite.
     """
 
     global _configurado
@@ -46,15 +64,26 @@ def configurar():
         return
 
     try:
-        logging.basicConfig(
-            filename=RUTA,
-            level=logging.ERROR,
-            format=(
-                "%(asctime)s | %(levelname)s | "
-                "%(name)s | %(message)s"
-            ),
+
+        manejador = logging.handlers.RotatingFileHandler(
+            RUTA,
+            maxBytes=TAMANO_MAXIMO,
+            backupCount=COPIAS,
             encoding="utf-8"
         )
+
+        manejador.setFormatter(
+            logging.Formatter(
+                "%(asctime)s | %(levelname)s | "
+                "%(name)s | %(message)s"
+            )
+        )
+
+        raiz = logging.getLogger()
+
+        raiz.setLevel(logging.ERROR)
+
+        raiz.addHandler(manejador)
 
         _configurado = True
 

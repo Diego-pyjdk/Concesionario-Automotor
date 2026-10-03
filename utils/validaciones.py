@@ -1,5 +1,7 @@
 # ==========================================
 # VALIDACIONES REUTILIZABLES
+
+
 # ==========================================
 # Cada función devuelve una tupla:
 #
@@ -11,6 +13,8 @@
 #
 # Ninguna función lanza excepciones: validan
 # y devuelven el resultado.
+
+
 # ==========================================
 
 
@@ -19,6 +23,8 @@ import re
 
 # ==========================================
 # LIMITES
+
+
 # ==========================================
 
 ANIO_MINIMO = 1900
@@ -36,6 +42,8 @@ PRECIO_MAXIMO = 999999999.0
 
 # ==========================================
 # TEXTO
+
+
 # ==========================================
 
 def texto_obligatorio(valor, campo):
@@ -54,6 +62,8 @@ def texto_obligatorio(valor, campo):
 
 # ==========================================
 # NUMEROS
+
+
 # ==========================================
 
 def es_numero(valor, campo="El valor"):
@@ -93,30 +103,6 @@ def es_precio(valor, campo="El precio"):
         return False, f"{campo} es demasiado alto."
 
     return True, ""
-
-
-def es_anio(valor, campo="El año"):
-    """
-    Verifica que el valor sea un año razonable
-    para un vehículo.
-    """
-
-    valido, mensaje = es_numero(valor, campo)
-
-    if not valido:
-        return False, mensaje
-
-    numero = int(float(str(valor).strip()))
-
-    if numero < ANIO_MINIMO or numero > ANIO_MAXIMO:
-        return (
-            False,
-            f"{campo} debe estar entre {ANIO_MINIMO} y {ANIO_MAXIMO}."
-        )
-
-    return True, ""
-
-
 def es_stock(valor, campo="El stock"):
     """
     Verifica que el valor sea una cantidad
@@ -141,6 +127,8 @@ def es_stock(valor, campo="El stock"):
 
 # ==========================================
 # PERSONAS Y USUARIOS
+
+
 # ==========================================
 
 # Se permiten tildes y ñ: los nombres en
@@ -204,35 +192,6 @@ def es_nombre_persona(valor, campo="El nombre"):
         )
 
     return True, ""
-
-
-def es_texto_simple(valor, campo, obligatorio=True):
-    """
-    Texto de catálogo: marcas y modelos.
-    """
-
-    texto = "" if valor is None else str(valor).strip()
-
-    if not texto and not obligatorio:
-        return True, ""
-
-    valido, mensaje = texto_obligatorio(texto, campo)
-
-    if not valido:
-        return valido, mensaje
-
-    if not sin_caracteres_de_control(texto):
-        return False, f"{campo} contiene caracteres no válidos."
-
-    if not re.fullmatch(TEXTO_SIMPLE, texto):
-        return (
-            False,
-            f"{campo} contiene caracteres no válidos."
-        )
-
-    return True, ""
-
-
 def es_nombre_usuario(valor, campo="El nombre de usuario"):
     """
     Identificador de la cuenta.
@@ -330,6 +289,8 @@ def contrasenas_coinciden(primera, segunda, campo="Las contraseñas"):
 
 # ==========================================
 # CONTACTO
+
+
 # ==========================================
 
 def es_email(valor, campo="El email", obligatorio=False):
@@ -380,6 +341,8 @@ def es_telefono(valor, campo="El teléfono", obligatorio=False):
 
 # ==========================================
 # COMBINADOR
+
+
 # ==========================================
 
 def primer_error(resultados):

@@ -15,7 +15,10 @@
 
 import mysql.connector
 
-from database.conexion import obtener_conexion
+from database.conexion import (
+    conexiones_libres,
+    obtener_conexion
+)
 
 from database.auditoria import (
     registrar_accion,
@@ -174,19 +177,30 @@ def autenticar(nombre_usuario, contrasena):
                 usuario["intentos_fallidos"]
             )
 
-            restantes = (
+            quedan = (
                 MAX_INTENTOS
                 - usuario["intentos_fallidos"]
                 - 1
             )
 
-            if restantes > 0:
+            if quedan > 0:
+
+                # Aquí NO se dice cuántos intentos
+                # quedan, aunque se sepa. El
+                # contador solo se incrementaba si la
+                # cuenta existía, así que incluirlo en
+                # el mensaje delataba qué cuentas hay:
+                # bastaba un intento fallido para
+                # averiguarlo.
+                #
+                # El aviso se ha dejado fuera a
+                # propósito. Quien se equivoca cinco
+                # veces recibe el de cuenta bloqueada,
+                # que ya le dice lo que necesita.
 
                 return (
                     False,
-                    "Usuario o contraseña incorrectos. "
-                    f"Te quedan {restantes} "
-                    "intento(s).",
+                    "Usuario o contraseña incorrectos.",
                     None
                 )
 
@@ -260,6 +274,7 @@ def minutos_restantes(bloqueado_hasta):
     return max(1, round(diferencia / 60))
 
 
+@conexiones_libres
 def registrar_intento_fallido(id_usuario, intentos_actuales):
     """
     Suma un intento y bloquea la cuenta al
@@ -309,6 +324,7 @@ def registrar_intento_fallido(id_usuario, intentos_actuales):
     conexion.close()
 
 
+@conexiones_libres
 @requiere_permiso(GESTIONAR_USUARIOS)
 def reiniciar_bloqueo(id_usuario):
     """
@@ -542,6 +558,7 @@ def hay_usuarios():
 # ARRANQUE
 # ==========================================
 
+@conexiones_libres
 def crear_primer_usuario(
     nombre_usuario,
     nombre_completo,
@@ -606,6 +623,7 @@ def crear_primer_usuario(
 # INSERTAR
 # ==========================================
 
+@conexiones_libres
 @requiere_permiso(GESTIONAR_USUARIOS)
 def insertar_usuario(
     nombre_usuario,
@@ -641,11 +659,30 @@ def insertar_usuario(
         1 if activo else 0
     )
 
-    cursor.execute(consulta, valores)
+    # usuarios.nombre_usuario es UNIQUE. UsuarioForm
+    # ya avisa antes de llegar aquí, pero dos ventanas
+    # abiertas a la vez pueden pasar el control. Sin
+    # esto el error crudo de MySQL saldría de aquí y
+    # el formulario, que solo recoge ErrorSistema, no
+    # lo entendería: reventaría la aplicación en vez
+    # de enseñar un mensaje.
 
-    conexion.commit()
+    try:
 
-    id_usuario = cursor.lastrowid
+        cursor.execute(consulta, valores)
+
+        conexion.commit()
+
+        id_usuario = cursor.lastrowid
+
+    except mysql.connector.Error as error:
+
+        conexion.rollback()
+
+        cursor.close()
+        conexion.close()
+
+        raise traducir_error(error) from error
 
     cursor.close()
     conexion.close()
@@ -664,6 +701,7 @@ def insertar_usuario(
 # ACTUALIZAR
 # ==========================================
 
+@conexiones_libres
 @requiere_permiso(GESTIONAR_USUARIOS)
 def actualizar_usuario(
     id_usuario,
@@ -742,9 +780,27 @@ def actualizar_usuario(
             id_usuario
         )
 
-    cursor.execute(consulta, valores)
+    # Mismo motivo que en el alta:
+    # usuarios.nombre_usuario es UNIQUE y
+    # renombrar a uno que ya existe revienta.
+    # UsuarioForm lo comprueba antes, pero dos
+    # ventanas a la vez pueden pasar el control y
+    # el error tiene que traducirse.
 
-    conexion.commit()
+    try:
+
+        cursor.execute(consulta, valores)
+
+        conexion.commit()
+
+    except mysql.connector.Error as error:
+
+        conexion.rollback()
+
+        cursor.close()
+        conexion.close()
+
+        raise traducir_error(error) from error
 
     cursor.close()
     conexion.close()
@@ -767,6 +823,7 @@ def actualizar_usuario(
     return True
 
 
+@conexiones_libres
 @requiere_permiso(GESTIONAR_USUARIOS)
 def cambiar_contrasena(id_usuario, contrasena):
     """
@@ -809,6 +866,7 @@ def cambiar_contrasena(id_usuario, contrasena):
 # ELIMINAR
 # ==========================================
 
+@conexiones_libres
 @requiere_permiso(GESTIONAR_USUARIOS)
 def eliminar_usuario(id_usuario):
     """

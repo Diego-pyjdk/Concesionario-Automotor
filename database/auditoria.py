@@ -27,7 +27,10 @@
 
 import mysql.connector
 
-from database.conexion import obtener_conexion
+from database.conexion import (
+    conexiones_libres,
+    obtener_conexion
+)
 
 import sesion as modulo_sesion
 
@@ -466,6 +469,7 @@ def obtener_resumen():
     return resumen
 
 
+@conexiones_libres
 @requiere_permiso(VER_AUDITORIA)
 def vaciar_auditoria():
     """

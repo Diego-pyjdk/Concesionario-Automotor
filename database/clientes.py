@@ -1,4 +1,7 @@
-from database.conexion import obtener_conexion
+from database.conexion import (
+    conexiones_libres,
+    obtener_conexion
+)
 
 from database.auditoria import registrar_accion
 
@@ -222,6 +225,7 @@ def contar_ventas_de_cliente(id_cliente):
 # INSERTAR
 # =============================
 
+@conexiones_libres
 @requiere_permiso(GESTIONAR_CLIENTES)
 def insertar_cliente(
     nombre,
@@ -285,6 +289,7 @@ def insertar_cliente(
 # ACTUALIZAR
 # =============================
 
+@conexiones_libres
 @requiere_permiso(GESTIONAR_CLIENTES)
 def actualizar_cliente(
     id_cliente,
@@ -343,6 +348,7 @@ def actualizar_cliente(
 # ELIMINAR
 # =============================
 
+@conexiones_libres
 @requiere_permiso(GESTIONAR_CLIENTES)
 def eliminar_cliente(id_cliente):
     """

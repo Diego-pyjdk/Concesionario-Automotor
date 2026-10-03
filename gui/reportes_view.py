@@ -35,6 +35,7 @@ from database.reportes import (
     obtener_metricas,
     obtener_vehiculos_vendidos,
     obtener_clientes_con_compras,
+    obtener_ventas_por_vendedor,
     obtener_stock_actual
 )
 
@@ -51,6 +52,11 @@ from utils.helpers import (
     celda,
     crear_boton_principal,
     crear_boton_secundario
+)
+
+from utils.moneda import (
+    formato_dinero,
+    formatear_numero
 )
 
 from gui.vista_base import VistaBase
@@ -130,6 +136,13 @@ class ReportesView(VistaBase):
             vacio="No hay vehículos registrados"
         )
 
+        self.tabla_vendedores = self.crear_hoja(
+            "Ventas por vendedor",
+            ["Vendedor", "Ventas", "Importe"],
+            anchos_fijos={1: 80, 2: 130},
+            vacio="Todavía no hay ventas registradas"
+        )
+
         self.pestanas.addTab(
             self.tabla_ventas.contenedor,
             "Detalle de ventas"
@@ -143,6 +156,11 @@ class ReportesView(VistaBase):
         self.pestanas.addTab(
             self.tabla_clientes.contenedor,
             "Clientes con compras"
+        )
+
+        self.pestanas.addTab(
+            self.tabla_vendedores.contenedor,
+            "Ventas por vendedor"
         )
 
         self.pestanas.addTab(
@@ -516,6 +534,7 @@ class ReportesView(VistaBase):
         self.cargar_tabla_ventas(filtros)
         self.cargar_tabla_vehiculos(filtros)
         self.cargar_tabla_clientes(filtros)
+        self.cargar_tabla_vendedores(filtros)
         self.cargar_tabla_inventario()
 
         self.actualizar_titulos()
@@ -573,7 +592,7 @@ class ReportesView(VistaBase):
                 str(fecha),
                 cliente,
                 vehiculo,
-                f"{float(precio):,.2f}"
+                formatear_numero(precio)
             )
             for (
                 _, fecha, cliente,
@@ -605,7 +624,7 @@ class ReportesView(VistaBase):
                 modelo,
                 anio,
                 unidades,
-                f"{float(importe):,.2f}",
+                formatear_numero(importe),
                 stock
             )
             for (
@@ -649,6 +668,37 @@ class ReportesView(VistaBase):
             self.tabla_clientes,
             datos,
             centricos={0, 3}
+        )
+
+    def cargar_tabla_vendedores(self, filtros):
+        """
+        Quién cerró cada venta.
+
+        Lleva los mismos filtros que las demás
+        pestañas: si esta contara todo el
+        histórico mientras las otras cuentan el
+        periodo, los números de dos pestañas
+        distintas no serían comparables.
+        """
+
+        filas = self.proteger(
+            obtener_ventas_por_vendedor,
+            **filtros
+        )
+
+        if filas is None:
+
+            return
+
+        datos = [
+            (vendedor, ventas, formatear_numero(importe))
+            for vendedor, ventas, importe in filas
+        ]
+
+        self.pintar(
+            self.tabla_vendedores,
+            datos,
+            centricos={1}
         )
 
     def cargar_tabla_inventario(self):
@@ -862,11 +912,10 @@ class ReportesView(VistaBase):
         return filas
 
     def dinero(self, valor):
+        """
+        Importes de los reportes. Delega en
+        utils.moneda: el símbolo sale de la
+        configuración, no de aquí.
+        """
 
-        try:
-
-            return f"$ {float(valor):,.2f}"
-
-        except (TypeError, ValueError):
-
-            return "$ 0.00"
+        return formato_dinero(valor)

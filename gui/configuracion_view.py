@@ -18,9 +18,12 @@
 from PySide6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
+    QFormLayout,
     QLabel,
     QFrame,
     QSpinBox,
+    QComboBox,
+    QLineEdit,
     QTableWidgetItem,
     QPushButton,
     QTabWidget,
@@ -32,7 +35,9 @@ from database.configuracion import (
     VERSION_SISTEMA,
     estado_conexion,
     obtener_stock_minimo,
-    actualizar_stock_minimo
+    actualizar_stock_minimo,
+    obtener_moneda,
+    actualizar_moneda
 )
 
 import sesion as modulo_sesion
@@ -40,6 +45,12 @@ import sesion as modulo_sesion
 from permisos import (
     tiene_permiso,
     GESTIONAR_CONFIGURACION
+)
+
+from utils.moneda import (
+    FORMATOS as FORMATOS_MONEDA,
+    validar_config,
+    formato_dinero
 )
 
 from utils.validaciones import (
@@ -263,6 +274,140 @@ class ConfiguracionView(VistaBase):
 
         layout.addLayout(fila)
 
+        # ------------------------------
+        # MONEDA
+        # ------------------------------
+        # El símbolo de la moneda no vive en el
+        # código: sale de aquí. Antes estaba escrito
+        # dentro de cuatro funciones distintas y
+        # cambiarlo obligaba a tocar cuatro
+        # archivos.
+
+        separador = QLabel("Moneda")
+
+        separador.setObjectName("subtitulo")
+
+        layout.addWidget(separador)
+
+        formulario = QFormLayout()
+
+        self.campo_moneda_codigo = QLineEdit()
+
+        self.campo_moneda_codigo.setMaxLength(10)
+
+        self.campo_moneda_codigo.setPlaceholderText(
+            "USD"
+        )
+
+        self.campo_moneda_simbolo = QLineEdit()
+
+        self.campo_moneda_simbolo.setMaxLength(5)
+
+        self.campo_moneda_simbolo.setPlaceholderText(
+            "$"
+        )
+
+        self.campo_moneda_formato = QComboBox()
+
+        for formato in FORMATOS_MONEDA:
+
+            self.campo_moneda_formato.addItem(
+                formato
+            )
+
+        self.campo_moneda_miles = QComboBox()
+
+        for separador_texto in (",", ".", " ", "'"):
+
+            self.campo_moneda_miles.addItem(
+                separador_texto
+            )
+
+        self.campo_moneda_decimales = QComboBox()
+
+        for separador_texto in (".", ",", " ' "):
+
+            self.campo_moneda_decimales.addItem(
+                separador_texto
+            )
+
+        formulario.addRow(
+            "Código:", self.campo_moneda_codigo
+        )
+
+        formulario.addRow(
+            "Símbolo:", self.campo_moneda_simbolo
+        )
+
+        formulario.addRow(
+            "Formato:", self.campo_moneda_formato
+        )
+
+        formulario.addRow(
+            "Separador de miles:",
+            self.campo_moneda_miles
+        )
+
+        formulario.addRow(
+            "Separador de decimales:",
+            self.campo_moneda_decimales
+        )
+
+        layout.addLayout(formulario)
+
+        self.etiqueta_ejemplo_moneda = QLabel("")
+
+        self.etiqueta_ejemplo_moneda.setObjectName(
+            "pie"
+        )
+
+        layout.addWidget(
+            self.etiqueta_ejemplo_moneda
+        )
+
+        fila_moneda = QHBoxLayout()
+
+        fila_moneda.setSpacing(10)
+
+        self.boton_guardar_moneda = (
+            crear_boton_principal(
+                "Guardar moneda",
+                self.guardar_moneda
+            )
+        )
+
+        fila_moneda.addStretch()
+
+        fila_moneda.addWidget(
+            self.boton_guardar_moneda
+        )
+
+        layout.addLayout(fila_moneda)
+
+        # Cada cambio enseña cómo quedaría, para
+        # no tener que guardar y cerrar para
+        # comprobar si el formato sirve.
+
+        self.campo_moneda_codigo.textChanged.connect(
+            self.previsualizar_moneda
+        )
+
+        self.campo_moneda_simbolo.textChanged.connect(
+            self.previsualizar_moneda
+        )
+
+        self.campo_moneda_formato.currentTextChanged.connect(
+            self.previsualizar_moneda
+        )
+
+        self.campo_moneda_miles.currentTextChanged.connect(
+            self.previsualizar_moneda
+        )
+
+        self.campo_moneda_decimales.currentTextChanged.connect(
+            self.previsualizar_moneda
+        )
+
         if not self.es_administrador:
 
             self.campo_stock_minimo.setEnabled(False)
@@ -270,6 +415,18 @@ class ConfiguracionView(VistaBase):
             self.boton_guardar_ajuste.setEnabled(
                 False
             )
+
+            for campo in (
+                self.campo_moneda_codigo,
+                self.campo_moneda_simbolo,
+                self.campo_moneda_formato,
+                self.campo_moneda_miles,
+                self.campo_moneda_decimales
+            ):
+
+                campo.setEnabled(False)
+
+            self.boton_guardar_moneda.setEnabled(False)
 
             ayuda = QLabel(
                 "Solo un administrador puede cambiar "
@@ -478,6 +635,85 @@ class ConfiguracionView(VistaBase):
 
             self.campo_stock_minimo.setValue(valor)
 
+        moneda = self.proteger(obtener_moneda)
+
+        if moneda is None:
+
+            return
+
+        # Se rellena con señales bloqueadas: al
+        # asignar cada campo dispara la
+        # previsualización, y así se vería un
+        # ejemplo a medias cinco veces.
+
+        bloqueado = self.campos_moneda()
+
+        try:
+
+            for campo in bloqueado:
+
+                campo.blockSignals(True)
+
+            self.campo_moneda_codigo.setText(
+                moneda["codigo"]
+            )
+
+            self.campo_moneda_simbolo.setText(
+                moneda["simbolo"]
+            )
+
+            indice = (
+                self.campo_moneda_formato.findText(
+                    moneda["formato"]
+                )
+            )
+
+            if indice >= 0:
+
+                self.campo_moneda_formato.setCurrentIndex(
+                    indice
+                )
+
+            indice = self.campo_moneda_miles.findText(
+                moneda["separador_miles"]
+            )
+
+            if indice >= 0:
+
+                self.campo_moneda_miles.setCurrentIndex(
+                    indice
+                )
+
+            indice = (
+                self.campo_moneda_decimales.findText(
+                    moneda["separador_decimales"]
+                )
+            )
+
+            if indice >= 0:
+
+                self.campo_moneda_decimales.setCurrentIndex(
+                    indice
+                )
+
+        finally:
+
+            for campo in bloqueado:
+
+                campo.blockSignals(False)
+
+        self.previsualizar_moneda()
+
+    def campos_moneda(self):
+
+        return (
+            self.campo_moneda_codigo,
+            self.campo_moneda_simbolo,
+            self.campo_moneda_formato,
+            self.campo_moneda_miles,
+            self.campo_moneda_decimales
+        )
+
     def comprobar_conexion(self):
 
         conectado, detalle = estado_conexion()
@@ -612,6 +848,111 @@ class ConfiguracionView(VistaBase):
         self.mostrar_exito(
             f"El umbral de stock bajo ahora es "
             f"{resultado}."
+        )
+
+        self.cargar_ajustes()
+
+    # =============================
+    # MONEDA
+    # =============================
+
+    def moneda_del_formulario(self):
+        """
+        Lo que hay ahora mismo en los campos, como
+        diccionario. Se usa para validar y para la
+        vista previa.
+        """
+
+        return {
+            "codigo": (
+                self.campo_moneda_codigo.text().strip()
+            ),
+            "simbolo": (
+                self.campo_moneda_simbolo.text().strip()
+            ),
+            "formato": (
+                self.campo_moneda_formato.currentText()
+            ),
+            "separador_miles": (
+                self.campo_moneda_miles.currentText()
+            ),
+            "separador_decimales": (
+                self.campo_moneda_decimales.currentText()
+            )
+        }
+
+    def previsualizar_moneda(self):
+        """
+        Muestra cómo quedarían los importes con lo
+        que hay tecleado, sin guardar nada.
+
+        Si la configuración no es válida, avisa en
+        vez de enseñar un importe que no podría
+        leerse.
+        """
+
+        propuesta = self.moneda_del_formulario()
+
+        valido, mensaje = validar_config(propuesta)
+
+        if not valido:
+
+            self.etiqueta_ejemplo_moneda.setText(
+                "Así no se puede: " + mensaje
+            )
+
+            return
+
+        self.etiqueta_ejemplo_moneda.setText(
+            "Se vería así: "
+            + formato_dinero(1234.5, propuesta)
+            + "  ·  un importe grande: "
+            + formato_dinero(9876543.21, propuesta)
+        )
+
+    def guardar_moneda(self):
+
+        propuesta = self.moneda_del_formulario()
+
+        valido, mensaje = validar_config(propuesta)
+
+        if not valido:
+
+            self.mostrar_ajuste_error(mensaje)
+
+            return
+
+        self.ocultar_ajuste_error()
+
+        resultado = self.proteger(
+            actualizar_moneda,
+            propuesta["codigo"],
+            propuesta["simbolo"],
+            propuesta["formato"],
+            propuesta["separador_miles"],
+            propuesta["separador_decimales"]
+        )
+
+        if resultado is None:
+
+            return
+
+        ok, motivo = resultado
+
+        if not ok:
+
+            self.mostrar_ajuste_error(motivo)
+
+            return
+
+        # La moneda queda aplicada en memoria, así
+        # que los importes del resto de la
+        # aplicación cambian sin reiniciar.
+
+        self.mostrar_exito(
+            f"Moneda actualizada. Ahora los "
+            f"importes se ven como "
+            f"{formato_dinero(1234.5)}."
         )
 
         self.cargar_ajustes()

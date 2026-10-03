@@ -1,6 +1,13 @@
-from database.conexion import obtener_conexion
+import mysql.connector
+
+from database.conexion import (
+    conexiones_libres,
+    obtener_conexion
+)
 
 from database.auditoria import registrar_accion
+
+from errores import traducir_error
 
 from permisos import (
     requiere_permiso,
@@ -136,11 +143,29 @@ def insertar_marca(nombre):
         VALUES (%s)
     """
 
-    cursor.execute(consulta, (nombre,))
+    # marcas.nombre es UNIQUE. MarcaForm ya
+    # avisa antes de llegar aqui, pero dos
+    # ventanas abiertas a la vez pueden pasar
+    # el control y chocar en la base: ese
+    # error se traduce para que se lea, en vez
+    # de dejar escapar el de MySQL.
 
-    conexion.commit()
+    try:
 
-    id_marca = cursor.lastrowid
+        cursor.execute(consulta, (nombre,))
+
+        conexion.commit()
+
+        id_marca = cursor.lastrowid
+
+    except mysql.connector.Error as error:
+
+        conexion.rollback()
+
+        cursor.close()
+        conexion.close()
+
+        raise traducir_error(error) from error
 
     cursor.close()
     conexion.close()
@@ -170,12 +195,27 @@ def actualizar_marca(id_marca, nombre):
         WHERE id = %s
     """
 
-    cursor.execute(
-        consulta,
-        (nombre, id_marca)
-    )
+    # Mismo motivo que en el alta: el UNIQUE
+    # de marcas.nombre puede saltar si dos
+    # ventanas editan a la vez.
 
-    conexion.commit()
+    try:
+
+        cursor.execute(
+            consulta,
+            (nombre, id_marca)
+        )
+
+        conexion.commit()
+
+    except mysql.connector.Error as error:
+
+        conexion.rollback()
+
+        cursor.close()
+        conexion.close()
+
+        raise traducir_error(error) from error
 
     cursor.close()
     conexion.close()
@@ -191,6 +231,7 @@ def actualizar_marca(id_marca, nombre):
 # ELIMINAR
 # =============================
 
+@conexiones_libres
 @requiere_permiso(GESTIONAR_MARCAS)
 def eliminar_marca(id_marca):
     """

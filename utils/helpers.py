@@ -17,12 +17,21 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
-    QHeaderView
+    QHeaderView,
+    QMessageBox
 )
 
 from PySide6.QtGui import QColor
 
 from PySide6.QtCore import Qt, QTimer
+
+from errores import (
+    ErrorSistema,
+    ErrorValidacion,
+    PermisoDenegado
+)
+
+from utils.registro import registrar_error
 
 
 # ==========================================
@@ -289,6 +298,50 @@ def crear_botones_accion(
 # ==========================================
 # BOTONES
 # ==========================================
+
+def avisar_error(padre, error):
+    """
+    Muestra un error controlado de un formulario.
+
+    Los formularios llaman a database/*.py sin
+    pasar por VistaBase.proteger(), así que una
+    excepción (permiso denegado, clave repetida,
+    conexión caída) escapaba del diálogo y
+    ejecutaba la aplicación. Este helper las
+    recoge y las enseña.
+
+    Solo hay que envolver la llamada:
+
+        try:
+            insertar_cliente(...)
+        except ErrorSistema as error:
+            avisar_error(self, error)
+            return
+    """
+
+    if isinstance(error, (ErrorValidacion, PermisoDenegado)):
+
+        # Son previstos: el mensaje basta y no
+        # ensucia el registro con ruido.
+
+        texto = error.mensaje
+
+    else:
+
+        registrar_error(error)
+
+        texto = (
+            "No se pudo completar la operación.\n\n"
+            "El detalle técnico está en "
+            "registro_errores.log."
+        )
+
+    QMessageBox.warning(
+        padre,
+        "No se pudo completar la operación",
+        texto
+    )
+
 
 def crear_boton_secundario(texto, al_hacer_click):
     """

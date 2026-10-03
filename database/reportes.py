@@ -321,7 +321,96 @@ def obtener_ventas_por_cliente(limite=5):
 # REPORTES DETALLADOS
 # ==========================================
 # A partir de aquí, solo administrador.
+#
+# "Ventas por vendedor" vive aquí y no en el
+# panel a propósito: es una medida del trabajo de
+# cada persona, no un dato comercial. Que lo vea
+# solo el administrador.
 # ==========================================
+
+@requiere_permiso(VER_REPORTES)
+def obtener_ventas_por_vendedor(
+    desde=None,
+    hasta=None,
+    cliente_id=None,
+    marca_id=None,
+    auto_id=None,
+    limite=10
+):
+    """
+    Ventas por vendedor, para ver quién está
+    cerrando más.
+
+    Usa _condiciones_ventas(), el mismo filtro que
+    el resto de reportes de ventas. Si se
+    construyera aparte, "por cliente" y "por
+    vendedor" acabarían significando cosas
+    distintas con las mismas fechas.
+
+    Agrupa por usuario_id y no solo por el
+    nombre: dos cuentas distintas pueden llamarse
+    igual, y sumarlas daría un vendedor que no
+    existe.
+
+    Las ventas sin vendedor (usuario_id NULL, las
+    anteriores a la migración) salen como grupo
+    propio con el nombre "Sin registrar". Así el
+    total del reporte cuadra con el número de
+    ventas y no parece que falten.
+    """
+
+    condiciones, valores = _condiciones_ventas(
+        desde, hasta, cliente_id, marca_id, auto_id
+    )
+
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+
+    # El alias del conteo NO puede llamarse
+    # "ventas": en el ORDER BY, MySQL no sabria si
+    # esa palabra es la tabla o la columna y la
+    # consulta no compilaba. Por eso num_ventas.
+    #
+    # El filtro va con _where() como en el resto de
+    # reportes de ventas: si cada uno armara el
+    # suyo, dos pestañas con las mismas fechas
+    # acabarían contando cosas distintas.
+    consulta = """
+        SELECT
+            COALESCE(
+                ventas.usuario_nombre,
+                'Sin registrar'
+            ) AS vendedor,
+            COUNT(*) AS num_ventas,
+            COALESCE(SUM(ventas.precio), 0) AS importe
+        FROM ventas
+            -- El filtro por marca se arma en
+            -- _condiciones_ventas() contra
+            -- autos.marca_id, así que aquí hace falta
+            -- el JOIN. LEFT para no perder ventas si
+            -- un vehículo desapareciera (con la FK no
+            -- puede, pero el LEFT no cuesta nada).
+            LEFT JOIN autos
+                ON ventas.auto_id = autos.id
+    """ + _where(condiciones) + """
+        GROUP BY
+            ventas.usuario_id,
+            COALESCE(
+                ventas.usuario_nombre,
+                'Sin registrar'
+            )
+        ORDER BY num_ventas DESC, importe DESC
+        LIMIT %s
+    """
+
+    cursor.execute(consulta, tuple(valores) + (limite,))
+
+    filas = cursor.fetchall()
+
+    cursor.close()
+    conexion.close()
+
+    return filas
 
 @requiere_permiso(VER_REPORTES)
 def obtener_detalle_ventas(

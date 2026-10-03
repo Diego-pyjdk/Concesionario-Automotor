@@ -10,11 +10,15 @@
 # ==========================================
 
 
+import os
 import sys
 
 from PySide6.QtWidgets import QApplication
 
-from database.configuracion import NOMBRE_SISTEMA
+from database.configuracion import (
+    NOMBRE_SISTEMA,
+    obtener_moneda
+)
 
 from errores import ErrorSistema
 
@@ -27,10 +31,46 @@ from gui.login_view import LoginView
 from gui.ventana_principal import VentanaPrincipal
 
 
-ARCHIVO_ESTILO = "gui/estilo.css"
+# Un solo dirname: main.py está en la RAÍZ del
+# proyecto, así que subir un nivel saldría del
+# proyecto entero.
+#
+# Con dos niveles la ruta apuntaba al escritorio y
+# cargar_estilos() fallaba al arrancar con "No se
+# encuentra la hoja de estilo". Compilar y abrir
+# cada vista no lo detecta: el error sale al
+# ejecutar main.py entero.
+
+_RAIZ = os.path.dirname(os.path.abspath(__file__))
+
+ARCHIVO_ESTILO = os.path.join(
+    _RAIZ,
+    "gui",
+    "estilo.css"
+)
 
 
 def cargar_estilos(app):
+    """
+    Aplica la hoja de estilo.
+
+    La ruta sale de __file__, no del directorio de
+    trabajo: con una ruta relativa, arrancar
+    haciendo doble clic en main.py desde el
+    explorador (o desde un acceso directo)
+    fallaba con un error que no explicaba nada,
+    porque el problema real era estar en la
+    carpeta equivocada.
+    """
+
+    if not os.path.exists(ARCHIVO_ESTILO):
+
+        raise ErrorSistema(
+            f"No se encuentra la hoja de estilo:\n"
+            f"  {ARCHIVO_ESTILO}\n\n"
+            "Falta gui/estilo.css dentro del "
+            "proyecto."
+        )
 
     with open(
         ARCHIVO_ESTILO,
@@ -51,6 +91,24 @@ def ejecutar():
     app.setApplicationName(NOMBRE_SISTEMA)
 
     cargar_estilos(app)
+
+    # La moneda se lee una vez y se queda en
+    # memoria. Calentarla aquí evita que el primer
+    # importe que se pinte sea el que dispare la
+    # consulta a la base de datos.
+    #
+    # Si falla, no se interrumpe el arranque:
+    # utils.moneda cae a los valores por defecto y
+    # la aplicación sigue con "$ ", que es lo que
+    # se ha visto siempre.
+
+    try:
+
+        obtener_moneda()
+
+    except Exception:
+
+        pass
 
     ventana = None
 

@@ -37,9 +37,14 @@ Módulos en la raíz:
 - Un módulo por entidad: toda la escritura va con `@requiere_permiso`.
 - **`reportes.py`** — toda la capa de agregados y estadísticas, para el panel y para la pantalla de reportes. **No existe `dashboard.py`**: se absorbió aquí para que una misma cifra no se calculara de dos maneras.
 - **`contratos.py`** — contratos de compraventa. El número (`CTR-2026-00001`) se arma con el año y el **id del propio contrato**, dentro de la misma transacción: se hace `INSERT` con `numero` a NULL, se toma `lastrowid` y se hace `UPDATE`. Así es único por construcción y no depende de contar filas ni de que dos usuarios creen contratos a la vez.
+- **`pagos.py`** — entradas de dinero de una venta. Devuelve `(precio, pagado, saldo)` desde `saldo_venta()` y el saldo se calcula con `SUM()` en SQL, no trayendo pagos a Python. La comprobación de "el importe no puede pasar del saldo" va **dentro** de la transacción con la venta bloqueada (`FOR UPDATE`): sin bloqueo, dos cobros a la vez pasarían los dos la comprobación.
 - `auditoria.py`, `configuracion.py` — servicios transversales.
-- `esquema.sql` — 8 tablas. Empieza con `DROP DATABASE`: es un script desde cero, nunca sobre datos reales.
+- `esquema.sql` — 9 tablas. Empieza con `DROP DATABASE`: es un script desde cero, nunca sobre datos reales. **Las tablas van en orden de dependencias y no hay ningún `ALTER TABLE`**: `usuarios` se crea antes que `ventas` para que `ventas.usuario_id` declare su clave foránea en línea.
 - `migracion_contratos.sql` — para bases que **ya** tienen datos: añade `contratos` y `clientes.documento` sin tocar ninguna fila.
+- `migracion_indices.sql` — añade `ix_ventas_fecha`, `ix_contratos_fecha` y el UNIQUE `marcas.nombre`. **Avisa antes de aplicarlo** de que si ya hay marcas repetidas el UNIQUE las rechazará: el archivo lleva la consulta de comprobación.
+- `migracion_ventas_usuario.sql` — añade `ventas.usuario_id`, `ventas.usuario_nombre` e `ix_ventas_usuario`.
+- `migracion_pagos.sql` — crea la tabla `pagos`.
+- `migracion_moneda.sql` — siembra las cinco claves de moneda. **`INSERT IGNORE`, no `INSERT`**: si el administrador ya cambió la moneda desde Configuración, migrar no debe pisarla.
 
 `gui/`:
 - **`vista_base.py`** — `VistaBase`. Envuelve la base de datos en `self.proteger(operacion, *args)`, que devuelve `None` si falla y muestra un mensaje legible. `mostrar_mensaje_error(texto)` es para errores sin excepción (un borrado bloqueado por FK, que vuelve como `False`).
@@ -79,8 +84,9 @@ Dos capas. Ocultar un botón no es la protección.
 - `usuarios.password_hash` guarda `sal_hex:hash_hex`. El texto plano no se guarda, no se registra y no se recupera.
 - `autenticar()` devuelve `(True, "", datos)` o `(False, mensaje, None)`; `datos` es `(id, nombre_usuario, nombre_completo, rol)`.
 - Usuario inexistente y contraseña incorrecta dan el **mismo** mensaje, y el caso inexistente verifica un hash señuelo para que el tiempo no revele qué cuentas existen.
+- **El mensaje no lleva el contador de intentos, nunca.** Se quitó a propósito: como el contador solo subía si la cuenta existía, un solo intento fallido bastaba para averiguar qué cuentas hay. El aviso de cuenta bloqueada sí menciona la cuenta, porque para entonces ya se han gastado cinco intentos y no se averigua nada nuevo. Si lo vuelves a añadir, rompes esto.
 - Bloqueo tras `MAX_INTENTOS = 5` durante `MINUTOS_BLOQUEO = 15` minutos, en `intentos_fallidos` / `bloqueado_hasta`. La contraseña correcta **no** lo salta.
-- Las cuentas nuevas 默认 son `vendedor` (menor privilegio).
+- Las cuentas nuevas son `vendedor` por defecto en UsuarioForm (menor privilegio). En la capa de datos `insertar_usuario` **exige** el rol: si no viene, es un fallo de quien llama, no algo que se deba adivinar.
 - `eliminar_usuario` devuelve `(True, "")` o `(False, motivo)`; no deja borrar tu propia cuenta ni el último administrador activo. `actualizar_usuario` no deja degradar ni desactivar al último administrador activo.
 - Coste ~0,17 s por verificación (`ITERACIONES = 260000`). Subirlo vale; bajarlo no.
 
@@ -123,11 +129,61 @@ Reordenar o añadir una columna rompe la interfaz sin error en la capa de datos.
 
 Las consultas de stock de `database/autos.py` reutilizan esas mismas 7 columnas para que `ReportesView` comparta el pintado (es de solo lectura, no deshace nada).
 
-Otros contratos: `obtener_ventas` → `id, fecha, cliente, vehiculo, precio` (los dos últimos son `CONCAT`, no ids). `obtener_usuarios` → `id, nombre_usuario, nombre_completo, rol, activo, ultimo_acceso, intentos_fallidos, bloqueado_hasta`. **`obtener_clientes` → `id, nombre, apellido, telefono, email, documento`** (6 columnas): `documento` se añadió para el contrato y `ClientesView`, `ClienteForm` y las búsquedas se actualizaron a la vez.
+Otros contratos: **`obtener_ventas` → `id, fecha, cliente, vehiculo, precio, usuario_nombre`** (6 columnas; los dos de texto son `CONCAT`, no ids, y el último puede ser `None` en ventas anteriores a `migracion_ventas_usuario.sql`, así que quien lo pinte tiene que poner algo legible). Está escrito en `VentasView.pintar_fila`, `VentasView.ver_venta` y `VentasView.columnas`/`columna_acciones`: si añades la columna del vendedor, la de acciones pasa a ser la 7. `obtener_usuarios` → `id, nombre_usuario, nombre_completo, rol, activo, ultimo_acceso, intentos_fallidos, bloqueado_hasta`. **`obtener_clientes` → `id, nombre, apellido, telefono, email, documento`** (6 columnas): `documento` se añadió para el contrato y `ClientesView`, `ClienteForm` y las búsquedas se actualizaron a la vez.
 
 `obtener_tablas()` en `gui/diagnostico.py` cruza en Python un `UNION` de conteos con `information_schema`: el nombre de tabla nunca se interpola en el SQL. **El `UNION` lleva una línea por cada tabla de `esquema.sql`.** Si al añadir una tabla se olvida esa línea, la tabla sigue apareciendo en el diagnóstico pero con **siempre 0 filas**, porque el `get()` no la encuentra: un fallo silencioso.
 
 `leer_valores()` devuelve `None` si falta una celda, en vez de inventar un vacío que reventaría la conversión.
+
+## Los pagos no se editan
+
+Un pago es un hecho económico. Si está mal, `pagos.eliminar_pago()` lo borra (solo el administrador, con confirmación doble) y se vuelve a registrar. Queda el rastro. **Un pago nunca se "anula con signo contrario"**: `importe` es siempre positivo y la aplicación rechaza los menores o iguales a cero, porque un importe negativo no es un pago, es un reembolso, y haría que el saldo pareciera un error de cálculo.
+
+**Un contrato dice QUÉ se debe pagar; la tabla `pagos` dice QUÉ se ha pagado.** No se mezclan: el contrato se firma una vez, los pagos se registran uno a uno. El anticipo del contrato **no** cuenta como pago hasta que se registre uno: si lo contara automáticamente, el saldo cuadraría con un movimiento que nadie puede ver en la lista de pagos ni explicar en un extracto.
+
+- `eliminar_venta()` **no anula una venta con pagos**. `pagos.venta_id` es `ON DELETE RESTRICT` y la función lo comprueba antes para devolver `False` con motivo, en vez de saltar por la excepción. A diferencia del contrato cancelado, aquí no hay nada que borrar antes: deshacer un cobro es una operación aparte, que decide `pagos.eliminar_pago()`, con permiso de administrador y con rastro.
+- **`registrar_pago()` rechaza un importe con más de dos decimales.** `pagos.importe` es `DECIMAL(10,2)`: un pago de 0.004 se guardaría redondeado como 0.00, el dinero desaparecería sin avisar y el saldo no se movería. Se rechaza en vez de redondear, porque un "no puede tener más de dos decimales" es preferible a un cobro que se pierde. El formulario usa `QDoubleSpinBox` con dos decimales, así que desde la interfaz es imposible llegar ahí.
+- **La comparación del saldo es exacta, sin margen de tolerancia**, y va en `Decimal`. Con `precio` y `pagado` en `DECIMAL(10,2)` el saldo siempre es múltiplo de un céntimo y se compara sin aproximado. El residuo que deja dividir 20.000 en 7 cuotas (2 céntimos) **sí** se puede cobrar, porque es un importe representable.
+- **Por qué se quitó la tolerancia:** con medio céntimo de margen, un pago de 0.004 pasaba la comprobación, se guardaba como 0.00 por el redondeo del DECIMAL, el saldo no cambiaba y el siguiente volvía a pasar. Se acumulaban filas de 0.00 que no movían nada. El margen parecía acotado y no lo era.
+- `saldo_venta()` devuelve `(precio, pagado, saldo)` con `SUM()` en SQL, no sumando en Python: si se sumara en Python, un pago de otra venta podría colarse.
+- `venta_bloqueada_por_pagos()` devuelve `(True, n)` o `(False, 0)`, igual que `venta_bloqueada_por_contrato()` devuelve el número: lo que hay que enseñar, no un booleano pelado.
+- `obtener_pagos()` → `id, fecha, importe, forma, referencia, concepto, usuario_nombre`.
+- El `rollback` de `registrar_pago()` va en `except BaseException`, no solo en `except mysql.connector.Error`: con la versión anterior, un fallo que no fuese de MySQL salía sin deshacer la transacción. El decorador `@conexiones_libres` cerraba la conexión y al cerrarla MySQL haría rollback igualmente, así que no se perdía dinero, pero la garantía dependedía de que el cierre funcionara.
+
+## La moneda
+
+**`utils/moneda.py` es el único sitio donde vive el símbolo de la moneda.** Antes el `"$ "` estaba escrito dentro de cuatro funciones distintas: `utils/contrato_pdf.py`, dos métodos `dinero()` en la interfaz y otra copia local en `contrato_form.py`. Cuatro copias significa que cambiar la moneda obligaba a tocar cuatro archivos y era fácil olvidar uno.
+
+Cinco claves en `configuracion`:
+
+| Clave | Por defecto | Para qué |
+|---|---|---|
+| `moneda_codigo` | `USD` | código ISO |
+| `moneda_simbolo` | `$` | símbolo |
+| `moneda_formato` | `simbolo_espacio` | cómo se juntan símbolo e importe |
+| `moneda_separador_miles` | `,` | `1,500.00` o `1.500,00` |
+| `moneda_separador_decimales` | `.` | `1,500.00` o `1.500,00` |
+
+Formatos: `simbolo_espacio`, `simbolo_pegado`, `simbolo_despues`, `codigo_espacio`, `codigo_pegado`, `codigo_despues`.
+
+- Los valores por defecto reproducen **exactamente** el `f"$ {valor:,.2f}"` de antes, byte a byte, incluidos los empates del redondeo en coma flotante. No es casualidad: con los separadores de siempre, `formatear_numero()` devuelve directamente `format(valor, ",.2f")` en vez de armar entero y céntimos a mano. **Armarlos a mano daba dos importes mal escritos** (`0.99` salía `1.99`, `-1500.75` salía `-1501.75`) y resolvía los empates distinto que Python (`0.995`). Solo hace falta cuando los separadores cambian.
+- **El signo va antes de la moneda**: `-$ 1,500.75`, no `$ -1,500.75`. Es una corrección sobre el comportamiento antiguo, no una regresión.
+- **No hay negativo cero**: `-0.004` se redondea a cero y sale `$ 0.00`, no `-$ 0.00`. El signo sale solo si queda alguna cifra detrás.
+- `prefijo_moneda()` es para los campos numéricos (`QDoubleSpinBox.setPrefix`). Con el formato que pone la moneda detrás devuelve cadena vacía: si no, el símbolo saldría dos veces.
+- **Las tablas no llevan símbolo** (nunca lo llevaron y añadirlo ensancha las columnas), pero usan `formatear_numero()` para que los separadores sí sigan la configuración. Si no, el listado diría `36,500.00` mientras el detalle diría `EUR 36.500,00`.
+- La configuración se lee una vez y se cachea en `utils/moneda.py`. `main.py` la calienta al arrancar y `ConfiguracionView` la reaplica al guardar, para que un cambio se vea **sin reiniciar**.
+- `utils/moneda.py` hace un import de `database.configuracion` **dentro** de la función, y solo en el primer fallo de caché. Es la única excepción a "no importes dentro de funciones" de todo el proyecto, y está ahí para no invertir la capa: `gui/` y `database/` usan `utils/`, no al revés. Si la lectura falla se cae a los valores por defecto: **formatear un importe nunca debe ser el motivo de que una pantalla no se abra.**
+- Un ajuste guardado con basura no rompe nada: `_normalizar()` descarta lo que no sirva y `actualizar_moneda()` valida antes de escribir. En particular, **el separador de miles y el de decimales no pueden ser el mismo**: `1.234.56` y `1.234,56` se leerían igual.
+
+## El orden de las tablas en esquema.sql
+
+El esquema se declara **en orden de dependencias**: `marcas → autos → clientes → usuarios → ventas → configuracion → auditoria → contratos → pagos`.
+
+`usuarios` va antes que `ventas` **a propósito**: así `ventas.usuario_id` declara su clave foránea en línea, dentro del propio `CREATE TABLE`, y **no hay ningún `ALTER TABLE` en todo el archivo**. Antes estaba al revés y hacía falta un `ALTER TABLE` suelto después de crear `usuarios`, lo que ataba la instalación al orden en que se ejecutaran las sentencias.
+
+`tests/test_instalacion.py` comprueba las tres cosas: que no hay `ALTER TABLE`, que cada tabla va después de las que referencia, y que `ventas_usuario_fk` existe con `ON DELETE SET NULL` tras ejecutar el esquema entero.
+
+`SET NULL` y no `CASCADE` es lo que separa "un empleado se va" de "se borran las ventas que hizo": con `CASCADE`, borrar la cuenta se llevaría sus ventas. `usuario_nombre` es una **copia**, así que aunque `usuario_id` quede a NULL el histórico sigue diciendo quién vendió. `tests/test_integridad_ventas.py` lo comprueba borrando la cuenta de verdad y verificando que la venta sobrevive con el nombre.
 
 ## Los contratos no se editan
 
@@ -178,23 +234,75 @@ Vaciar el campo filtra al instante: sin texto no hay nada que filtrar.
 - Español en todo: identificadores, textos, comentarios.
 - Las llamadas van **un argumento por línea**, con línea en blanco entre sentencias; las secciones llevan marcos ASCII (`# =====`, `# -----`). Respétalo: un reformateo normal esconde el cambio real.
 - Orden de imports: primero los del proyecto, luego PySide6. **No importes dentro de funciones.**
-- Los métodos de GUI que chocan con funciones de datos se(aliasan: `from database.autos import eliminar_auto as eliminar_auto_db`.
+- Los métodos de GUI que chocan con funciones de datos se aliasan: `from database.autos import eliminar_auto as eliminar_auto_db`.
 - Los botones de fila capturan su índice por valor por defecto: `lambda _, f=fila: self.editar(f)`. `clicked` emite un booleano y el primer parámetro lo absorbe.
 - Archivos UTF-8 **sin BOM** y con salto de línea final.
 - Compilar no detecta nombres mal escritos dentro de un método: solo fallan al construir el widget. Antes de dar algo por bueno, **constrúyelo**.
 
 ## Verificación
 
-No hay suite de tests en el repositorio. Hasta que la haya, comprueba con estas piezas:
+Hay suite de pruebas en `tests/`, con pytest:
 
+- `venv\Scripts\python.exe -m pytest` — 255 pruebas.
 - `venv\Scripts\python.exe verificar_instalacion.py` — entorno y conexión.
-- Compilar todos los `.py` y revisar imports sin usar con AST.
-- **Construir cada vista y cada formulario** en `QT_QPA_PLATFORM=offscreen` y navegar por las 10 secciones. Es lo único que detecta un `NameError` de runtime, un import que sobra o un parámetro mal pasado. El `QWidget` sin importar en `contrato_form.py` solo apareció así.
-- Parchear `QMessageBox.warning/information/question/critical` antes de construir nada: si no, un error inesperado **cuelga** la comprobación en vez de fallarla. Si una comprobación se queda colgada, busca el `QMessageBox` que nadie parcheó. Lo mismo con `QInputDialog.getItem`.
-- **Medir la maqueta, no fiarse de la captura.** `grab()` sin pantalla duplica los widgets de celda (el mismo botón sale dos veces) y usa una fuente genérica más ancha que Segoe UI: aparenta que todo el texto se corta y no es cierto. Registra las fuentes del sistema y comprueba con `QFontMetrics` si un botón cabe en su celda y si el texto cabe en su columna. Para que la captura salga limpia, espera un ciclo de eventos (`QEventLoop` + `QTimer.singleShot`) antes de hacer `grab()`.
+
+### Cómo aísla las pruebas
+
+Cada sesión levanta una base temporal llamada `pruebas_concesionario` a partir de `database/esquema.sql` y **fija `DB_NAME` en el entorno** para que toda la aplicación hable con ella. No se sustituye `obtener_conexion` módulo por módulo: al sustituirlo se salta la instrumentación de `conexion.py` y las pruebas dejan de detectar fugas de conexión. Además `cargar_env()` usa `os.environ.setdefault`, así que lo que está en el entorno manda sobre el `.env`.
+
+- **`base_de_prueba` va con `lock_wait_timeout = 5` antes del `DROP`.** Por defecto ese DROP espera **24 horas** si hay una sesión sin cerrar: una fuga de conexión convierte la batería de pruebas en un cuelgue sin pistas.
+- `limpiar_tablas` va antes de `como_administrador`, no al revés: si la cuenta se creara antes de vaciar, el borrado se llevaría por delante al propio administrador.
+- `datos_base` crea los datos como administrador y **restaura la sesión copiando los valores**, no la referencia. `obtener_sesion()` devuelve SIEMPRE el mismo objeto y `iniciar_sesion()` lo muta dentro: guardar la referencia para restaurarla guarda un espejo, y "restaurar" copia los valores nuevos.
+- `sin_fugas_de_conexion` cuenta las sesiones abiertas sobre la base de prueba antes y después.
+
+### Lo que las pruebas atrapan y la compilación no
+
+- **Construir cada vista y cada formulario** en `QT_QPA_PLATFORM=offscreen` y navegar por las 10 secciones (10 admin, 6 vendedor). Es lo único que detecta un `NameError` de runtime, un import que sobra o un parámetro mal pasado. El `QWidget` sin importar en `contrato_form.py` solo apareció así.
+- Parchear `QMessageBox.warning/information/question/critical` **y `QInputDialog.getItem`** antes de construir nada: si no, un error inesperado **cuelga** la comprobación en vez de fallarla.
+- `pytest -o faulthandler_timeout=10` vuelca el rastro cuando algo se queda esperando. Sin eso, un cuelgue no dice nada.
+
+### Más comprobaciones puntuales
+
+- **Medir la maqueta, no fiarse de la captura.** `grab()` sin pantalla duplica los widgets de celda y usa una fuente genérica más ancha que Segoe UI: aparenta que todo el texto se corta y no es cierto. Registra las fuentes del sistema y comprueba con `QFontMetrics`. Para que la captura salga limpia, espera un ciclo de eventos (`QEventLoop` + `QTimer.singleShot`).
 - Para esperar a un `QTimer` hay que procesar eventos (`app.processEvents()` en bucle); `time.sleep` no los deja correr.
-- Capturas sin pantalla: `widget.grab().save(ruta)` tras registrar fuentes del sistema con `QFontDatabase.addApplicationFont()` (`segoeui.ttf`, `segoeuib.ttf`, `arial.ttf`, `seguiemj.ttf`). Sin eso salen cajas en vez de acentos y emojis: es un artefacto del renderizado, no un fallo de la aplicación.
-- **Cuidado con las pruebas destructivas.** `test_auditoria.py` llama a `vaciar_auditoria()` al empezar y en un `finally`: deja el registro de auditoría vacío. Las pruebas de contratos borran lo que crean capturando el id devuelto, nunca "el último" ni "por posición".
+- Capturas sin pantalla: `widget.grab().save(ruta)` tras registrar fuentes con `QFontDatabase.addApplicationFont()`.
+
+### Cuidado con las pruebas destructivas
+
+`test_auditoria.py` llama a `vaciar_auditoria()` al empezar y en un `finally`. Las pruebas de contratos borran lo que crean capturando el id devuelto, **nunca "el último" ni "por posición"**. Una suite antigua que vivía fuera del repositorio incumplía esto y borró dos veces los contratos de demostración de la base real: por eso las pruebas están ahora dentro, con base propia.
+
+## Conexiones: se cierran siempre
+
+**Toda función de `database/` que abra conexión y escriba lleva `@conexiones_libres`** (de `database/conexion.py`), por encima de `@requiere_permiso`.
+
+Sin eso, un INSERT que falla a mitad (una clave foránea, un UNIQUE, MySQL que se cae) saca la excepción **con la conexión abierta**. MySQL no la suelta: sigue sosteniendo la sesión en el servidor, ocupa una de las `max_connections` y, si la función había abierto una transacción, se lleva por delante los bloqueos de las filas que hubiera tocado. Con unos pocos fallos seguidos la aplicación deja de poder conectar y no hay forma de saber por qué mirando el mensaje de error.
+
+El decorador no traga excepciones ni altera el valor devuelto: solo añade el cierre. Va por encima de `@requiere_permiso` para que también cubra el caso de que el permiso falle.
+
+Las llamadas a `conexion.close()` que ya había dentro de la función se pueden dejar: cerrar dos veces no hace nada.
+
+**Al añadir una función de escritura en `database/`, decorarlo no es opcional.**
+
+## Los errores de MySQL se traducen, siempre
+
+Un `INSERT` contra una columna UNIQUE revienta con `mysql.connector.IntegrityError`. Si eso sale de `database/`, el formulario (que solo recoge `ErrorSistema`) no lo entiende y **la aplicación revienta en vez de enseñar un mensaje**. La regla: dentro de la capa de datos se traduce con `traducir_error(error)` y se lanza con `raise ... from error`.
+
+Ya está en `marcas.insertar_marca`, `marcas.actualizar_marca`, `usuarios.insertar_usuario` y `usuarios.actualizar_usuario`. Las columnas UNIQUE son `marcas.nombre`, `usuarios.nombre_usuario`, `contratos.numero` y `contratos.venta_id`.
+
+## Huecos conocidos
+
+Dejarlos escritos es mejor que olvidarlos:
+
+- **La clave foránea de `ventas.cliente_id` y `ventas.auto_id` se llama `ventas_ibfk_1` y `ventas_ibfk_2` en las bases ya migradas**, no `ventas_cliente_fk` / `ventas_auto_fk` como en `esquema.sql`. No rompe nada (el nombre de una restricción es decorativo) pero desconcierta al comparar el esquema con una base en marcha. Renombrarla es un `ALTER TABLE ... RENAME CONSTRAINT` por cada una.
+- **`crear_contrato` no registra el anticipo como pago.** Queda pendiente decidir quién lo hace: el formulario al firmar, o que el usuario lo registre a mano desde el detalle de la venta. Ahora mismo el saldo de una venta con anticipo aparece entero hasta que se mete el pago.
+
+- **`crear_contrato` congela precio, cliente y vehículo, pero no la marca, el modelo, el año, el color ni el precio de lista.** Se leen en vivo con un JOIN, así que corregir el vehículo cambia el contrato ya firmado.
+- **La validación del anticipo y las cuotas vive en `contrato_form`, no en `crear_contrato`.** En la capa de datos solo están las tres guardas duras (forma de pago válida, anticipo no negativo, anticipo no mayor que el precio, y "Contado" sin anticipo ni cuotas), porque un contrato es un documento legal y no puede quedar guardado uno que imprimiría una cuota en negativo. El resto sigue dependiendo de que quien llame pase por el formulario.
+- **`insertar_usuario` exige `rol`.** Que las cuentas nuevas sean de vendedor es cosa del formulario, no un valor por defecto de la capa de datos.
+- **`registrar_venta` devuelve `False` al fallar, no `None`.** Quien llama solo mira la veracidad.
+- **`obtener_auditoria` devuelve `id, fecha_hora, usuario_nombre, accion, modulo, descripcion`.** El usuario va en el índice 2, no en el 4. `usuario_id` no se expone a propósito.
+- **`obtener_usuarios` no devuelve `password_hash`** (8 columnas: id, nombre_usuario, nombre_completo, rol, activo, ultimo_acceso, intentos_fallidos, bloqueado_hasta). Para comprobar el formato del hash hay que leer la fila cruda.
+- **`hashear_contrasena` devuelve `(sal, hash)` en bytes**, no una cadena. Lo que se guarda es `sal.hex():hash.hex()`.
 
 ## El PDF
 
@@ -206,5 +314,7 @@ No hay suite de tests en el repositorio. Hasta que la haya, comprueba con estas 
 - **reportlab sustituye en silencio lo que la fuente no sabe dibujar**, por el glifo `.notdef` de Helvetica, que es una "n": un emoji pegado en unas observaciones salía como "nn", que parece una palabra y no un signo ilegible. `sustituir_no_mapeables()` cambia por "?" lo que no se puede convertir a `cp1252`, que es lo que hay detrás de `WinAnsiEncoding`. Con eso la "€" (0x80 en WinAnsi) se conserva y sale bien; los emoji y el chino salen como "?".
 - Los estilos se construyen en `construir_estilos()`, no como constantes de módulo: `getSampleStyleSheet()` toca el registro global de reportlab y llamarlo al importar modificaría el proceso aunque nadie genere un PDF.
 - Las fuentes base-14 (Helvetica) no hay que incrustarlas. reportlab les pone `/WinAnsiEncoding`, que ya cubre tildes, ñ, «», · y €.
-- **Para comprobar un PDF no vale un volcado a pelo:** reportlab codifica las páginas con ASCII85 y luego Flate, y además coloca cada bloque con `cm`. Hay que descomprimir (en ese orden) y sumar las traslaciones para saber dónde cae cada texto.
+- **Para comprobar un PDF no vale un volcado a pelo:** reportlab codifica las páginas con ASCII85 y luego Flate, y además coloca cada bloque con `cm`. Hay que descomprimir (en ese orden) y sumar las traslaciones para saber dónde cae cada texto. Tres trampas más, todas las pisadas alguna vez:
+  - Al descomprimir hay que **quitar el `~>`** del final del bloque ASCII85 antes de `a85decode`, o falla con `Non-Ascii85 digit found: ~`.
+  - **El símbolo de la moneda no se busca como carácter en el flujo de texto.** Con las fuentes base-14, reportlab codifica en WinAnsi: el `$` es ASCII y sale tal cual, pero la `€` sale como el escape octal `\200`. Buscar `chr(0x20AC)` en un texto latin-1 no la encuentra nunca, y buscar el byte `0x80` en el **archivo** tampoco, porque el contenido va comprimido. Hay que buscar `b"\200"` en el flujo ya descomprimido. Y el tamaño del PDF no dice nada: `$ 52,000.00` y `52.000,00 €` ocupan los mismos once caracteres.
 - `KeepTogether` en el bloque de condiciones y en el de firmas: si no caben enteros pasan a la página siguiente en vez de quedar partidos.

@@ -7,6 +7,8 @@ from PySide6.QtWidgets import (
     QMessageBox
 )
 
+from errores import ErrorSistema
+
 from database.marcas import (
     marca_existe,
     insertar_marca,
@@ -21,7 +23,8 @@ from utils.validaciones import (
 from utils.helpers import (
     crear_boton_principal,
     crear_boton_secundario,
-    conectar_enter_guardar
+    conectar_enter_guardar,
+    avisar_error
 )
 
 
@@ -139,19 +142,39 @@ class MarcaForm(QDialog):
         # ------------------------------
         # GUARDAR
         # ------------------------------
+        # El UNIQUE de marcas.nombre puede
+        # saltar aunque la comprobación de
+        # arriba pasara: dos ventanas abiertas a
+        # la vez. Sin este try, la excepción
+        # escapaba del diálogo y caia la
+        # aplicación.
 
-        if self.marca:
-            actualizar_marca(
-                id_marca,
-                nombre
-            )
+        try:
 
-            mensaje = "La marca se actualizó correctamente."
+            if self.marca:
+                actualizar_marca(
+                    id_marca,
+                    nombre
+                )
 
-        else:
-            insertar_marca(nombre)
+                mensaje = (
+                    "La marca se actualizó "
+                    "correctamente."
+                )
 
-            mensaje = "La marca se guardó correctamente."
+            else:
+                insertar_marca(nombre)
+
+                mensaje = (
+                    "La marca se guardó "
+                    "correctamente."
+                )
+
+        except ErrorSistema as error:
+
+            avisar_error(self, error)
+
+            return
 
         QMessageBox.information(
             self,

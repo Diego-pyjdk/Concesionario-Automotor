@@ -285,6 +285,9 @@ def obtener_tablas():
         UNION ALL
         SELECT 'marcas', COUNT(*) FROM marcas
         UNION ALL
+        SELECT 'pagos', COUNT(*)
+        FROM pagos
+        UNION ALL
         SELECT 'usuarios', COUNT(*) FROM usuarios
         UNION ALL
         SELECT 'ventas', COUNT(*) FROM ventas

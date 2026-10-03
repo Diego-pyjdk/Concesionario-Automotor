@@ -33,14 +33,19 @@ from permisos import (
     CREAR_CONTRATOS
 )
 
+from errores import ErrorSistema
+
 from utils.validaciones import (
     es_precio,
     primer_error
 )
 
+from utils.moneda import prefijo_moneda
+
 from utils.helpers import (
     crear_boton_principal,
-    crear_boton_secundario
+    crear_boton_secundario,
+    avisar_error
 )
 
 
@@ -120,7 +125,12 @@ class VentaForm(QDialog):
 
         self.campo_precio.setDecimals(2)
 
-        self.campo_precio.setPrefix("$ ")
+        # El prefijo sale de la moneda configurada: con
+        # euros tiene que poner "EUR " y no "$ ".
+
+        self.campo_precio.setPrefix(
+            prefijo_moneda()
+        )
 
         formulario.addRow("Cliente:", self.combo_cliente)
         formulario.addRow("Vehículo:", self.combo_auto)
@@ -317,18 +327,25 @@ class VentaForm(QDialog):
         # La transacción, la verificación de
         # stock y el descuento se resuelven
         # en database/ventas.py.
-        # ------------------------------
 
         fecha = self.campo_fecha.date().toString(
             "yyyy-MM-dd"
         )
 
-        resultado, mensaje = registrar_venta(
-            cliente_id,
-            datos_auto[0],
-            fecha,
-            self.campo_precio.value()
-        )
+        try:
+
+            resultado, mensaje = registrar_venta(
+                cliente_id,
+                datos_auto[0],
+                fecha,
+                self.campo_precio.value()
+            )
+
+        except ErrorSistema as error:
+
+            avisar_error(self, error)
+
+            return
 
         if not resultado:
             QMessageBox.warning(
