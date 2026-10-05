@@ -64,6 +64,23 @@ VER_CONTRATOS = "ver_contratos"
 CREAR_CONTRATOS = "crear_contratos"
 GESTIONAR_CONTRATOS = "gestionar_contratos"
 
+# La financiera (cronogramas, cuotas, cobranza) es de
+# la administración.
+#
+# Y no es un capricho: la cartera es la lista de a
+# QUIÉN se le llama y por cuánto. Un vendedor con
+# acceso vería a cuánto debe cada cliente del
+# concesionario, incluidos los que no son suyos, con
+# los teléfonos para llamarles. Ver sus propios
+# contratos ya puede, en Contratos.
+#
+# Si más adelante hace falta que alguien externo
+# cobre, la respuesta es un ROL NUEVO (por ejemplo
+# "cobrador") con estos dos permisos, no abrirle la
+# cartera completa al vendedor.
+VER_FINANCIERA = "ver_financiera"
+GESTIONAR_FINANCIERA = "gestionar_financiera"
+
 GESTIONAR_USUARIOS = "gestionar_usuarios"
 
 VER_AUDITORIA = "ver_auditoria"
@@ -93,6 +110,8 @@ PERMISOS_POR_ROL = {
         VER_CONTRATOS,
         CREAR_CONTRATOS,
         GESTIONAR_CONTRATOS,
+        VER_FINANCIERA,
+        GESTIONAR_FINANCIERA,
         GESTIONAR_USUARIOS,
         VER_AUDITORIA,
         VER_CONFIGURACION,
@@ -102,11 +121,17 @@ PERMISOS_POR_ROL = {
     # El vendedor consulta el inventario y los
     # clientes, registra ventas y crea contratos.
     # No borra nada, no administra usuarios y no
-    # entra a configuración ni reportes.
+    # entra a configuración, reportes ni cartera.
     #
     # Los contratos los crea porque son parte de
     # la venta, pero no los cancela ni los borra:
     # eso es de la administración.
+    #
+    # NO tiene ver_financiera. La cartera dice a
+    # cuánto debe cada cliente del concesionario,
+    # no solo los suyos, y trae el teléfono para
+    # llamarle: es información de la dirección, no
+    # de la venta. Ver sus contratos sí lo tiene.
     ROL_VENDEDOR: {
         VER_TABLERO,
         VER_VEHICULOS,

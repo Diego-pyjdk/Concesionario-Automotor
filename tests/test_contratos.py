@@ -13,6 +13,8 @@
 
 import os
 
+from datetime import date
+
 import pytest
 
 from database.ventas import registrar_venta
@@ -34,7 +36,6 @@ from database.contratos import (
 
 from utils.contrato_pdf import (
     generar_contrato,
-    ruta_documento,
     cuota_importe,
     escapar,
     sustituir_no_mapeables
@@ -104,7 +105,239 @@ class TestNumero:
         ) == "contrato_CTR-2026-00001.pdf"
 
 
+
+def _prepara_qt():
+    """
+    Deja una QApplication y los cuadros de dialogo
+    parcheados.
+
+    Sin esto, construir un formulario tumba el proceso
+    con un fallo de segmentacion y pytest no llega ni
+    a escribir el informe.
+    """
+
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+    from PySide6.QtWidgets import (
+        QApplication,
+        QMessageBox,
+        QInputDialog
+    )
+
+    for nombre in (
+        "warning", "information", "critical",
+        "question", "about"
+    ):
+
+        setattr(
+            QMessageBox,
+            nombre,
+            staticmethod(lambda *a, **k: QMessageBox.Ok)
+        )
+
+    QInputDialog.getItem = staticmethod(
+        lambda *a, **k: ("", False)
+    )
+
+    QInputDialog.getText = staticmethod(
+        lambda *a, **k: ("", False)
+    )
+
+    if QApplication.instance() is None:
+
+        QApplication([])
+
+
+class TestElCaminoDeLaVenta:
+
+    """
+    Crear el contrato al confirmar una venta.
+
+    Es el flujo que hace casi todo el mundo, y era el
+    que estaba roto: `ventas_view` pasaba al formulario
+    una fila de `obtener_ventas()`, que tiene SEIS
+    columnas porque añade el vendedor, y el formulario
+    desempaquetaba cinco.
+
+    No lo detectaba ninguna prueba. Las de los
+    formularios construían el formulario con una tupla
+    de cinco columnas hecha a mano: exactamente la
+    forma que le daba gusto al constructor. Un
+    constructor que solo funciona con la forma que le
+    construyes a mano no lo puede comprobar nadie más.
+
+    Estas pruebas construyen el formulario con un ID,
+    que es lo que hacen los tres sitios que lo abren.
+    """
+
+    def test_el_formulario_se_abre_con_el_id(
+        self, como_administrador, venta_lista
+    ):
+
+        from gui.formularios.contrato_form import (
+            ContratoForm
+        )
+
+        _prepara_qt()
+
+        formulario = ContratoForm(None, venta_lista)
+
+        try:
+
+            assert formulario.venta is not None
+
+            # Y son las cinco columnas, ni una mas.
+
+            assert len(formulario.venta) == 5
+
+            assert formulario.precio > 0
+
+        finally:
+
+            formulario.deleteLater()
+
+    def test_el_formulario_no_revisa_si_no_hay_venta(
+        self, como_administrador
+    ):
+
+        """
+        Un id que no existe no revienta el dialogo.
+
+        Se explica y se deja cerrar. Antes era un
+        `TypeError` al desempaquetar `None`, con la
+        aplicacion sin ventana y sin decir por que.
+        """
+
+        from gui.formularios.contrato_form import (
+            ContratoForm
+        )
+
+        _prepara_qt()
+
+        formulario = ContratoForm(None, 999999)
+
+        try:
+
+            assert formulario.venta is None
+
+            # Sin pestañas, porque no hay nada que
+            # configurar.
+
+            assert not hasattr(formulario, "pestanas")
+
+        finally:
+
+            formulario.deleteLater()
+
+    def test_el_formulario_no_revisa_si_ya_hay_contrato(
+        self, como_administrador, venta_lista
+    ):
+
+        from database.contratos import (
+            crear_contrato,
+            venta_para_contrato
+        )
+
+        _prepara_qt()
+
+        id_contrato, numero = crear_contrato(
+            venta_id=venta_lista,
+            forma_pago="Contado"
+        )
+
+        assert id_contrato is not None, numero
+
+        # La capa de datos lo dice, no el formulario.
+
+        assert venta_para_contrato(venta_lista) is None
+
+        from gui.formularios.contrato_form import (
+            ContratoForm
+        )
+
+        formulario = ContratoForm(None, venta_lista)
+
+        try:
+
+            assert formulario.venta is None
+
+        finally:
+
+            formulario.deleteLater()
+
+    def test_venta_para_contrato_trae_las_mismas_que_la_lista(
+        self, como_administrador, venta_lista
+    ):
+
+        """
+        `venta_para_contrato()` y `ventas_sin_contrato()`
+        devuelven la MISMA forma.
+
+        Las dos alimentan al mismo formulario. Si una
+        ganara una columna, el formulario desempaquetaria
+        un numero distinto segun por donde se abriera, y
+        solo fallaria en uno de los dos caminos.
+        """
+
+        from database.contratos import (
+            venta_para_contrato,
+            ventas_sin_contrato
+        )
+
+        de_una = venta_para_contrato(venta_lista)
+
+        assert de_una is not None
+
+        lista = ventas_sin_contrato()
+
+        assert any(fila[0] == venta_lista for fila in lista)
+
+        fila = next(
+            f for f in lista if f[0] == venta_lista
+        )
+
+        assert len(de_una) == len(fila)
+
+        assert de_una[0] == fila[0]
+
+        assert de_una[1] == fila[1]
+
+        assert de_una[2] == fila[2]
+
+        assert de_una[3] == fila[3]
+
+        assert de_una[4] == fila[4]
+
+    def test_obtener_ventas_tiene_una_columna_mas(
+        self, como_administrador, venta_lista
+    ):
+
+        """
+        La razon del bug, escrita para que no se
+        olvide.
+
+        `obtener_ventas()` trae el vendedor; la del
+        contrato no. Por eso sus filas NO son
+        intercambiables, y por eso el formulario recibe
+        el ID y no una fila.
+        """
+
+        from database.ventas import obtener_ventas
+
+        from database.contratos import venta_para_contrato
+
+        venta = obtener_ventas()[0]
+
+        assert len(venta) == 6
+
+        assert len(venta_para_contrato(venta_lista)) == 5
+
+
 class TestCrear:
+
+    """
+    Alta de contrato.
+    """
 
     def test_crea_con_venta_lista(
         self, como_administrador, venta_lista
@@ -159,13 +392,17 @@ class TestCrear:
     def test_guarda_anticipo_y_cuotas(
         self, como_administrador, venta_lista
     ):
-        id_contrato, _ = crear_contrato(
+        id_contrato, motivo = crear_contrato(
             venta_id=venta_lista,
             forma_pago="Anticipo + cuotas",
             anticipo=5000.0,
             cantidad_cuotas=12,
-            observaciones="Entrega en junio"
+            observaciones="Entrega en junio",
+            periodicidad="mensual",
+            primer_vencimiento=date(2026, 11, 1)
         )
+
+        assert id_contrato is not None, motivo
 
         contrato = obtener_contrato(id_contrato)
 
@@ -528,12 +765,16 @@ class TestPdf:
     def test_cuota_calculada(
         self, como_administrador, venta_lista
     ):
-        id_contrato, _ = crear_contrato(
+        id_contrato, motivo = crear_contrato(
             venta_id=venta_lista,
             forma_pago="Anticipo + cuotas",
             anticipo=5000.0,
-            cantidad_cuotas=10
+            cantidad_cuotas=10,
+            periodicidad="mensual",
+            primer_vencimiento=date(2026, 11, 1)
         )
+
+        assert id_contrato is not None, motivo
 
         contrato = obtener_contrato(id_contrato)
 

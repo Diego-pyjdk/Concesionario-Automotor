@@ -60,8 +60,19 @@ ACCIONES = {
     "ELIMINAR": "Eliminación",
     "VENTA": "Venta registrada",
     "VENTA_ANULADA": "Venta anulada",
+    "PAGO": "Pago registrado",
+    "PAGO_ANULADO": "Pago anulado",
+    "VENTA_PAGADA": "Venta totalmente cobrada",
     "DESBLOQUEO": "Desbloqueo de cuenta",
     "CONFIGURACION": "Cambio de configuración",
+    "FINANCIERA": "Movimiento de financiación",
+    "CRONOGRAMA": "Cronograma generado",
+    "PAGO_CUOTA": "Pago a cuota",
+    "CUOTA_ANULADA": "Cuota anulada",
+    "CUOTA_REACTIVADA": "Cuota reactivada",
+    "VENCIDAS": "Detección de vencidas",
+    "GARANTIA": "Garantía modificada",
+    "CONVENIO": "Convenio de pago",
     "ACCESO_DENEGADO": "Acceso denegado"
 }
 
@@ -72,6 +83,11 @@ MODULOS = {
     "marcas": "Marcas",
     "clientes": "Clientes",
     "ventas": "Ventas",
+    "contratos": "Contratos",
+    "financiera": "Financiera",
+    "pagos": "Pagos",
+    "garantias": "Garantías",
+    "convenios": "Convenios",
     "usuarios": "Usuarios",
     "configuracion": "Configuración"
 }
@@ -110,6 +126,55 @@ def registrar_accion(
 
     Devuelve True si se registró, False si no.
     Nunca lanza excepciones.
+
+    Los dos parámetros del usuario se reenvían a
+    registrar_cambio() TAL CUAL, centinela incluido.
+    Reenviarlos como None los convertiría en "sin
+    usuario", y como valor concreto los convertiría en
+    "usa la sesión": las dos cosas están mal.
+
+    El día que se partió esta función en dos se
+    olvidó reenviarlos, y un login fallido contra una
+    cuenta que no existe pasó a quedar anotado a
+    nombre de quien estuviera sentado delante, que es
+    justo lo que el centinela existe para evitar: un
+    intento fallido tiene que quedarse sin atribuir,
+    no atribuirse a otra persona.
+    """
+
+    return registrar_cambio(
+        modulo,
+        accion,
+        descripcion,
+        usuario_id=usuario_id,
+        usuario_nombre=usuario_nombre
+    )
+
+
+def registrar_cambio(
+    modulo,
+    accion,
+    descripcion=None,
+    usuario_id=SIN_INFORMAR,
+    usuario_nombre=SIN_INFORMAR,
+    valor_anterior=None,
+    valor_nuevo=None,
+    referencia=None
+):
+    """
+    Guarda una acción Y, si los hay, los valores
+    anterior y nuevo.
+
+    Es registrar_accion() con una columna más a
+    cada lado. Existe separado, y no como parámetro
+    opcional, porque una modificación que se puede
+    registrar SIN decir qué cambió no cumple su
+    trabajo: quien la lea no sabe si el saldo era
+    200.000 o 2.000.000 antes de que alguien lo
+    tocara.
+
+    Devuelve True si se registró, False si no.
+    Nunca lanza excepciones.
     """
 
     # Con el centinela se distingue "no informado"
@@ -131,6 +196,24 @@ def registrar_accion(
 
         descripcion = str(descripcion)[:255]
 
+    # Los valores van a 255 también, por el mismo
+    # motivo que la descripción. Si alguien pasa un
+    # texto más largo, se corta: es preferible un
+    # valor anterior truncado a un INSERT que falla
+    # y deja la modificación sin rastro.
+
+    if valor_anterior is not None:
+
+        valor_anterior = str(valor_anterior)[:255]
+
+    if valor_nuevo is not None:
+
+        valor_nuevo = str(valor_nuevo)[:255]
+
+    if referencia is not None:
+
+        referencia = str(referencia)[:255]
+
     conexion = None
     cursor = None
 
@@ -147,9 +230,12 @@ def registrar_accion(
                 usuario_nombre,
                 accion,
                 modulo,
-                descripcion
+                descripcion,
+                valor_anterior,
+                valor_nuevo,
+                referencia
             )
-            VALUES (%s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         valores = (
@@ -157,7 +243,10 @@ def registrar_accion(
             usuario_nombre,
             accion,
             modulo,
-            descripcion
+            descripcion,
+            valor_anterior,
+            valor_nuevo,
+            referencia
         )
 
         cursor.execute(consulta, valores)
@@ -338,8 +427,16 @@ def obtener_auditoria(
 ):
     """
     Devuelve (id, fecha_hora, usuario_nombre,
-    accion, modulo, descripcion) del más
-    reciente al más antiguo.
+    accion, modulo, descripcion, valor_anterior,
+    valor_nuevo, referencia) del más reciente al
+    más antiguo.
+
+    Las tres últimas pueden ser None: las entradas
+    anteriores a la migración que añadió esas columnas
+    no las tienen, y no se van a rellenar con nada
+    inventado. Quien las pinte tiene que distinguir
+    "no se registró" de "se registró vacío", así que
+    una celda vacía no vale: hay que poner algo.
 
     Los filtros son opcionales y se acumulan.
     Solo un administrador puede leer el rastro.
@@ -359,7 +456,10 @@ def obtener_auditoria(
             usuario_nombre,
             accion,
             modulo,
-            descripcion
+            descripcion,
+            valor_anterior,
+            valor_nuevo,
+            referencia
         FROM auditoria
     """ + _where(condiciones) + " ORDER BY id DESC LIMIT %s"
 
@@ -371,6 +471,254 @@ def obtener_auditoria(
 
     cursor.close()
     conexion.close()
+
+    return registros
+
+
+@requiere_permiso(VER_AUDITORIA)
+def obtener_historial(referencia, limite=LIMITE_POR_DEFECTO):
+    """
+    Todo lo que le pasó a una cosa concreta: un
+    contrato, un recibo, un número de cuota.
+
+    Es el historial que pide el cliente cuando
+    pregunta por su contrato, y el que necesita el
+    vendedor cuando una cuota no cuadra.
+
+    Se busca por la columna referencia, no por la
+    descripción: buscando texto dentro de una
+    descripción el resultado depende de cómo se
+    escribió esa vez, y el mismo pago podría
+    aparecer en un sitio y no en otro.
+
+    Devuelve filas con el mismo formato que
+    obtener_auditoria().
+    """
+
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+
+    consulta = """
+        SELECT
+            id,
+            fecha_hora,
+            usuario_nombre,
+            accion,
+            modulo,
+            descripcion,
+            valor_anterior,
+            valor_nuevo,
+            referencia
+        FROM auditoria
+        WHERE referencia = %s
+        ORDER BY id DESC
+        LIMIT %s
+    """
+
+    cursor.execute(consulta, (referencia, limite))
+
+    registros = cursor.fetchall()
+
+    cursor.close()
+    conexion.close()
+
+    return registros
+
+
+@requiere_permiso(VER_AUDITORIA)
+def historial_contrato(id_contrato, limite=300):
+    """
+    Todo lo registrado sobre un contrato, junto y en
+    orden.
+
+    Y "junto" es el motivo de que exista. El rastro se
+    reparte por la columna referencia, y cada módulo
+    escribe lo que le viene bien: las garantías usan
+    el NÚMERO del contrato, y cada pago usa SU
+    recibo.
+
+    De ahí que buscar por el número del contrato dé
+    las garantías y ni uno de los pagos, y que
+    buscar por el recibo dé cada pago una vez y haya
+    que preguntar recibo a recibo. Un historial al
+    que le faltan los cobros no sirve: es justo el
+    movimiento que el cliente viene a preguntar.
+
+    Por eso la regla de "qué es la referencia de qué"
+    vive aquí y no en la pantalla: la pantalla solo
+    pinta lo que le devuelven.
+
+    Dos consultas, no una por recibo: el número del
+    contrato y los recibios de su venta se piden
+    juntos y luego se busca con un IN.
+
+    El contrato entra por id y no por número porque
+    quien llama tiene el id, y el número depende del
+    año: el contrato 7 puede ser CTR-2025-00007 y no
+    CTR-2027-00007.
+
+    Devuelve filas con el mismo formato que
+    obtener_auditoria(), de la más reciente a la más
+    antigua.
+    """
+
+    conexion = obtener_conexion()
+    cursor = conexion.cursor(dictionary=True)
+
+    cursor.execute(
+        """
+        SELECT
+            contratos.numero,
+            contratos.venta_id
+        FROM contratos
+        WHERE contratos.id = %s
+        """,
+        (id_contrato,)
+    )
+
+    contrato = cursor.fetchone()
+
+    if not contrato:
+
+        cursor.close()
+        conexion.close()
+
+        return []
+
+    cursor.execute(
+        """
+        SELECT pagos.recibo
+        FROM pagos
+        WHERE pagos.venta_id = %s
+          AND pagos.recibo IS NOT NULL
+          AND pagos.recibo <> ''
+        """,
+        (contrato["venta_id"],)
+    )
+
+    recibos = [
+        fila["recibo"] for fila in cursor.fetchall()
+    ]
+
+    valores = [contrato["numero"]]
+    criterios = "referencia = %s"
+
+    if recibos:
+
+        criterios += (
+            " OR referencia IN ("
+            + ", ".join(["%s"] * len(recibos))
+            + ")"
+        )
+
+        valores.extend(recibos)
+
+    consulta = """
+        SELECT
+            id,
+            fecha_hora,
+            usuario_nombre,
+            accion,
+            modulo,
+            descripcion,
+            valor_anterior,
+            valor_nuevo,
+            referencia
+        FROM auditoria
+        WHERE {criterios}
+        ORDER BY fecha_hora DESC, id DESC
+        LIMIT %s
+    """.format(criterios=criterios)
+
+    valores.append(int(limite))
+
+    # ------------------------------
+    # CURSOR NUEVO, SIN DICCIONARIO
+    # ------------------------------
+    # Estas dos consultas necesitan nombres de
+    # columna: "contrato["numero"]" es mucho más
+    # legible que "tupla[0]" y no depende del orden
+    # de la lista. La del rastro, en cambio, tiene que
+    # devolver TUPLAS, porque su formato es el mismo
+    # que el de obtener_auditoria() y quien la pinta
+    # los recorre con índices: si salieran
+    # diccionarios, en el historial del contrato cada
+    # fila daría KeyError con el número de columna.
+
+    cursor.close()
+
+    cursor = conexion.cursor()
+
+    cursor.execute(consulta, tuple(valores))
+
+    registros = cursor.fetchall()
+
+    cursor.close()
+    conexion.close()
+
+    return registros
+
+
+@requiere_permiso(VER_AUDITORIA)
+def obtener_cambios(dejar_registros_financiera=False):
+    """
+    Las entradas que llevan valor anterior y valor
+    nuevo, de la más reciente a la más antigua.
+
+    Es la respuesta a "¿qué se ha tocado en esta
+    instalación?", que obtener_auditoria() no
+    contesta: ahí hay también los inicios de sesión.
+
+    deja_registros_financiera trae además las
+    operaciones de la caja (pagos, ventas,
+    anulaciones), que ya están en la tabla con sus
+    valores pero no son "cambios" de un dato: son
+    movimientos de dinero. Filtro así para que el
+    informe se pueda pedir de dos formas.
+    """
+
+    conexiones = obtener_conexion()
+    cursor = conexiones.cursor()
+
+    if dejar_registros_financiera:
+
+        condicion = (
+            "(valor_anterior IS NOT NULL "
+            " OR valor_nuevo IS NOT NULL "
+            " OR modulo IN ('financiera', 'pagos', "
+            "               'ventas', 'garantias'))"
+        )
+
+    else:
+
+        condicion = (
+            "(valor_anterior IS NOT NULL "
+            " OR valor_nuevo IS NOT NULL)"
+        )
+
+    consulta = f"""
+        SELECT
+            id,
+            fecha_hora,
+            usuario_nombre,
+            accion,
+            modulo,
+            descripcion,
+            valor_anterior,
+            valor_nuevo,
+            referencia
+        FROM auditoria
+        WHERE {condicion}
+        ORDER BY id DESC
+        LIMIT %s
+    """
+
+    cursor.execute(consulta, (LIMITE_POR_DEFECTO,))
+
+    registros = cursor.fetchall()
+
+    cursor.close()
+    conexiones.close()
 
     return registros
 
@@ -410,35 +758,6 @@ def contar_registros(
     conexion.close()
 
     return total
-
-
-@requiere_permiso(VER_AUDITORIA)
-def obtener_usuarios_auditados():
-    """
-    Nombres distintos que aparecen en el
-    rastro, para el filtro de la vista.
-    """
-
-    conexion = obtener_conexion()
-    cursor = conexion.cursor()
-
-    consulta = """
-        SELECT DISTINCT usuario_nombre
-        FROM auditoria
-        WHERE usuario_nombre IS NOT NULL
-        ORDER BY usuario_nombre
-    """
-
-    cursor.execute(consulta)
-
-    nombres = [
-        fila[0] for fila in cursor.fetchall()
-    ]
-
-    cursor.close()
-    conexion.close()
-
-    return nombres
 
 
 @requiere_permiso(VER_AUDITORIA)

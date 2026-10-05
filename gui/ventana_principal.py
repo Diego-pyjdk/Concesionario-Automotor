@@ -28,6 +28,7 @@ from permisos import (
     VER_REPORTES,
     VER_CONTRATOS,
     GESTIONAR_CONTRATOS,
+    VER_FINANCIERA,
     GESTIONAR_USUARIOS,
     VER_AUDITORIA,
     VER_CONFIGURACION
@@ -43,6 +44,7 @@ from gui.marcas_view import MarcasView
 from gui.clientes_view import ClientesView
 from gui.ventas_view import VentasView
 from gui.contratos_view import ContratosView
+from gui.cartera_view import CarteraView
 from gui.reportes_view import ReportesView
 from gui.usuarios_view import UsuariosView
 from gui.auditoria_view import AuditoriaView
@@ -60,7 +62,26 @@ class VentanaPrincipal(QMainWindow):
     # La vista NO se construye si el rol no
     # tiene el permiso de lectura: así ni
     # siquiera existe el widget prohibido.
+    #
+    # Y aquí hay una cosa que no es obvia: la
+    # lista de secciones tiene que coincidir
+    # con el orden en que las pruebas las
+    # recorren. tests/ cuenta cuántas ve el
+    # administrador y cuántas el vendedor, y
+    # un apartado nuevo cambia esos números.
     # ==========================================
+
+    # La cartera va DESPUÉS de Contratos y antes
+    # de Reportes, y por el orden de la
+    # información: primero qué se vendió, luego
+    # qué se debe, luego cómo va el negocio.
+    #
+    # Solo el administrador la ve. No es un
+    # capricho: la cartera dice a cuánto debe
+    # cada cliente del concesionario, no solo
+    # los del vendedor, y trae el teléfono para
+    # llamarle. Ver los contratos propios ya
+    # puede en la sección anterior.
 
     SECCIONES = [
         ("🏠  Inicio", DashboardView, VER_TABLERO),
@@ -69,6 +90,7 @@ class VentanaPrincipal(QMainWindow):
         ("👤  Clientes", ClientesView, VER_CLIENTES),
         ("💰  Ventas", VentasView, VER_VENTAS),
         ("📄  Contratos", ContratosView, VER_CONTRATOS),
+        ("💳  Cartera", CarteraView, VER_FINANCIERA),
         ("📊  Reportes", ReportesView, VER_REPORTES),
         ("👥  Usuarios", UsuariosView, GESTIONAR_USUARIOS),
         ("🛡  Auditoría", AuditoriaView, VER_AUDITORIA),

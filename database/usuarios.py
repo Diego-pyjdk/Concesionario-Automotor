@@ -106,7 +106,28 @@ def autenticar(nombre_usuario, contrasena):
 
             registrar_login(
                 nombre_usuario,
-                False
+                False,
+                # id_usuario=None a propósito, y NO
+                # omitido.
+                #
+                # Omitirlo lo deja en SIN_INFORMAR, que
+                # significa "no me han dicho", y entonces
+                # se usa la SESIÓN. Con alguien dentro, el
+                # intento de entrar con una cuenta que no
+                # existe quedaba anotado a nombre de ese
+                # alguien: el rastro afirmaba que el admin
+                # había intentado entrar con una cuenta
+                # ajena, cuando lo que se había hecho era
+                # justo adivinar nombres.
+                #
+                # El centinela existe para poder decir
+                # "esta entrada NO es de ningún usuario"
+                # sin que se confunda con "usa el de la
+                # sesión". El propio registrar_login() lo
+                # dice en su documentación: un fallo
+                # contra un usuario inexistente se
+                # registra con id NULL.
+                id_usuario=None
             )
 
             return (

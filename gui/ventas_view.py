@@ -8,17 +8,11 @@ from database.contratos import (
     venta_bloqueada_por_contrato
 )
 
-from database.pagos import (
-    saldo_venta,
-    obtener_pagos,
-    eliminar_pago,
-    venta_bloqueada_por_pagos
-)
+from database.pagos import saldo_venta
 
 from permisos import (
     tiene_permiso,
-    CREAR_CONTRATOS,
-    GESTIONAR_VENTAS
+    CREAR_CONTRATOS
 )
 
 from utils.moneda import formatear_numero
@@ -55,9 +49,9 @@ class VentasView(VistaListado):
 
     ANCHO_VER = 56
 
-    ANCHO_CONTRATO = 68
+    ANCHO_CONTRATO = 94
 
-    ANCHO_ELIMINAR = 70
+    ANCHO_ELIMINAR = 94
 
     ancho_acciones = ancho_acciones_para([
         ANCHO_VER,
@@ -205,45 +199,59 @@ class VentasView(VistaListado):
 
     def abrir_contrato(self, id_venta):
         """
-        Abre el contrato de una venta concreta,
-        buscando sus datos en la base.
+        Abre el contrato de una venta concreta.
+
+        Se pasa el ID y el formulario busca los datos
+        él, con venta_para_contrato(). Antes se le
+        pasaba una fila de obtener_ventas() y el
+        formulario la desempaquetaba como si tuviera
+        cinco columnas: la tenía tiene seis, con el
+        vendedor. Ese camino —crear el contrato al
+        confirmar una venta— reventaba siempre.
         """
 
-        venta = self.buscar_venta(id_venta)
-
-        if venta is None:
-
-            self.mostrar_mensaje_error(
-                "No se encontró la venta."
-            )
-
-            self.cargar_datos()
-
-            return
-
-        ContratoForm(self, venta).exec()
+        ContratoForm(self, id_venta).exec()
 
         self.cargar_datos()
 
+    # =============================
+    # DETALLE
+    # =============================
+
     def buscar_venta(self, id_venta):
         """
-        Los datos de una venta concreta.
+        La fila de una venta concreta, o None.
 
-        Devuelve la tupla que necesita
-        ContratoForm, o None si no existe.
+        Del listado que ya está cargado, sin volver a
+        consultar: el botón se pinta sobre una fila que
+        ya se tiene.
+
+        ------------------------------
+        # POR QUÉ EXISTE Y POR QUÉ SE
+        # QUEDÓ
+        # ------------------------------
+
+        La necesita `ver_venta()`, porque
+        `DetalleVentaDialog` recibe la tupla de
+        `obtener_ventas()` para pintar datos, saldo y
+        pagos.
+
+        Y se borró por error al arreglar el camino del
+        contrato, que usaba para otra cosa. Sin esto,
+        `ver_venta()` fallaba con un `AttributeError`
+        al pulsar **Ver**: la venta aparecía en la
+        lista y no se podía abrir. Por eso la prueba
+        de la lista tiene que pulsar **Ver**, no solo
+        comprobar que la vista se construye.
         """
 
-        for venta in self.proteger(obtener_ventas) or []:
+        for venta in getattr(self, "filas", []):
 
             if venta[0] == id_venta:
 
                 return venta
 
         return None
-
-    # =============================
-    # DETALLE
-    # =============================
 
     def ver_venta(self, fila):
         """
@@ -323,29 +331,20 @@ class VentasView(VistaListado):
             return
 
         # ------------------------------
-        # DATOS DE LA VENTA
+        # ABRIR EL FORMULARIO
         # ------------------------------
-        # La venta sale de los datos ya
-        # cargados, no de una consulta nueva:
-        # la fila tiene justo lo que necesita el
-        # formulario.
+        # Solo el ID. El formulario busca los datos
+        # de la venta por su cuenta, con
+        # venta_para_contrato().
+        #
+        # Antes se le pasaba filas[fila], que es una
+        # fila de obtener_ventas() con SEIS columnas,
+        # y el formulario desempaquetaba cinco. La
+        # comprobación de arriba, que además lo dice
+        # con un mensaje bueno, no servía de nada:
+        # el error venía después, al construir.
 
-        filas = getattr(self, "filas", [])
-
-        if fila < 0 or fila >= len(filas):
-
-            self.mostrar_mensaje_error(
-                "No se encontró la venta."
-            )
-
-            return
-
-        # Los datos ya están cargados en self.filas:
-        # la fila tiene justo lo que necesita el
-        # formulario, así que no hay que volver a
-        # consultar.
-
-        ContratoForm(self, filas[fila]).exec()
+        ContratoForm(self, id_venta).exec()
 
         self.cargar_datos()
 

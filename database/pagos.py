@@ -25,8 +25,6 @@ from decimal import (
     ROUND_HALF_UP
 )
 
-import mysql.connector
-
 from database.conexion import (
     obtener_conexion,
     conexiones_libres
@@ -109,6 +107,80 @@ def obtener_pagos(venta_id):
     conexion.close()
 
     return filas
+
+
+# ==========================================
+# LOS MISMOS PAGOS, CON MÁS COLUMNAS
+# ==========================================
+
+def obtener_pagos_detalle(venta_id):
+    """
+    Los pagos de una venta como diccionarios, con el
+    estado de anulación, el recibo y a qué cuota se
+    imputó cada uno.
+
+    No sustituye a obtener_pagos(): aquella es la
+    consulta del listado, con siete columnas y como
+    tuplas. Esta es para las pantallas que necesitan
+    saber MÁS de cada pago, sobre todo si está
+    anulado y por qué.
+
+    Existe porque la alternativa era que el detalle
+    del contrato escribiera su propia consulta. Y
+    una consulta escrita en la interfaz se queda
+    desfasada sin avisar: cuando se añadió
+    pagos.cuota_id, la copia sigue preguntando por
+    las siete columnas de antes y funciona, pero
+    muestra todos los pagos juntos sin poder decir
+    cuál cubrió qué cuota. El fallo es silencioso,
+    que es la peor clase.
+
+    Contrato de columnas: id, fecha, importe, forma,
+    referencia, concepto, usuario_nombre, recibo,
+    cuota_id, numero_cuota, estado, anulado_motivo,
+    anulado_usuario, anulado_fecha.
+
+    "numero_cuota" es None en un pago que no se
+    imputó a ninguna cuota (la entrega inicial, un
+    pago a cuenta), y quien lo pinte tiene que
+    distinguirlo de la cuota 0.
+    """
+
+    conexion = obtener_conexion()
+    cursor = conexion.cursor(dictionary=True)
+
+    cursor.execute(
+        """
+        SELECT
+            pagos.id,
+            pagos.fecha,
+            pagos.importe,
+            pagos.forma,
+            pagos.referencia,
+            pagos.concepto,
+            pagos.usuario_nombre,
+            pagos.recibo,
+            pagos.cuota_id,
+            cuotas.numero AS numero_cuota,
+            pagos.estado,
+            pagos.anulado_motivo,
+            pagos.anulado_usuario,
+            pagos.anulado_fecha
+        FROM pagos
+        LEFT JOIN cuotas
+            ON pagos.cuota_id = cuotas.id
+        WHERE pagos.venta_id = %s
+        ORDER BY pagos.fecha DESC, pagos.id DESC
+        """,
+        (venta_id,)
+    )
+
+    pagos = cursor.fetchall()
+
+    cursor.close()
+    conexion.close()
+
+    return pagos
 
 
 def saldo_venta(venta_id):

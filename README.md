@@ -18,6 +18,10 @@ automóviles, de escritorio, en Python.
 2. [Instalación](#2-instalación-paso-a-paso)
 3. [Uso](#3-uso)
    - [Contratos de compraventa](#contratos-de-compraventa)
+   - [Ventas financiadas](#ventas-financiadas)
+   - [Cobrar varios meses de una vez](#cobrar-varios-meses-de-una-vez)
+   - [Cartera y cobranza](#cartera-y-cobranza)
+   - [Garantías](#garantías)
    - [Pagos y saldo](#pagos-y-saldo)
    - [La moneda](#la-moneda)
 4. [Estructura del proyecto](#4-estructura-del-proyecto)
@@ -218,6 +222,7 @@ Tras 5 intentos fallidos la cuenta se bloquea
 | **Clientes** | Ficha de clientes |
 | **Ventas** | Registrar y consultar ventas |
 | **Contratos** | Contratos de compraventa y su PDF |
+| **Cartera** | Quién debe, cuánto y desde cuándo (solo admin) |
 | **Reportes** | Informes con filtros y CSV |
 | **Usuarios** | Cuentas y roles (solo admin) |
 | **Auditoría** | Historial de acciones (solo admin) |
@@ -259,6 +264,131 @@ Estados y transiciones:
 Al confirmar, el PDF se genera solo y se guarda en
 `documentos/contratos/`. Desde el listado se puede
 volver a abrir con el botón **PDF**.
+
+### Ventas financiadas
+
+El contrato puede financiarse. En la pestaña
+**Financiación y cronograma** del formulario se
+indica el saldo a financiar, cada cuánto vence,
+cuándo vence la primera, el interés anual, los gastos
+de administración y la retención.
+
+**El cronograma se ve antes de firmar**, con las
+fechas y los importes de verdad. No es un adorno: las
+condiciones quedan congeladas en el contrato y un
+cronograma ya firmado no se puede cambiar, así que
+firmar a ciegas 72 vencimientos es pedir un problema
+en el mes seis. La **última cuota** lleva un céntimo
+distinto para que la suma cuadre exactamente con el
+saldo financiado.
+
+Al confirmar, las cuotas se generan y el PDF sale con
+la tabla de vencimientos.
+
+Para **cobrar** se entra en el detalle del contrato
+(**Ver** desde el botón *Contrato* de la venta, o el
+botón de la fila en **Contratos**), o directamente
+desde **Cartera**. El detalle tiene cuatro pestañas:
+cronograma, pagos, garantías e historial, con los
+datos del contrato fijos arriba.
+
+- El formulario de cobro propone **el saldo entero**,
+  que es lo que se cobra casi siempre, y no deja
+  escribir más que ese saldo.
+- Cada cobro genera su **recibo en PDF**, en
+  `documentos/recibos/`, con el número arriba, el
+  importe en letras y a qué cuota se imputa.
+- Un cobro **no se borra: se anula**, con su motivo y
+  su rastro, y el importe vuelve a la cuota.
+
+#### Cobrar varios meses de una vez
+
+Un cliente que paga dos meses seguidos es lo normal. El
+botón **Adelantado** (en **Cartera** y en el detalle
+del contrato) abre un formulario que **enseña el reparto
+antes de cobrar**:
+
+```
+Importe recibido:  20.000,00        [+ Una cuota] [Todo lo pendiente]
+
+Así se va a repartir:
+  Nº   Vencimiento   Importe        Saldo
+   1   05/11/2026    $ 10.000,00    $ 0,00
+   2   05/12/2026    $ 10.000,00    $ 0,00
+
+2 cuota(s) quedan saldadas
+```
+
+Las cuotas se cubren **enteras**, de la más antigua a la
+más reciente, y el importe que no quepa se avisa en vez
+de repartirse. El dinero nunca se guarda "suelto": sale
+un pago por cuota, **con el mismo número de recibo**, y
+el recibo en PDF sale con una tabla del reparto. Todo
+ocurre en una sola transacción: o entra entero o no
+entra nada.
+
+Si el cliente entrega de más, ese excedente **no se
+imputa** a ninguna cuota: se registra aparte como otro
+cobro.
+
+**Las cuotas vencidas se detectan solas.** No hay
+ningún proceso de fondo: una cuota vencida es un estado
+derivado de la fecha, y se revisa al abrir la cartera.
+Pagar una cuota vencida la saca de esa lista.
+
+Los pagos y las cuotas **no se editan**, ni siquiera
+por la administración. Un pago mal registrado se anula
+y se vuelve a registrar; una cuota con pagos tampoco se
+anula, porque el saldo del contrato dejaría de cuadrar.
+
+### Cartera y cobranza
+
+La sección **Cartera** es solo del administrador. Es
+la lista de a quién se le llama, por cuánto y desde
+cuándo, con el teléfono al lado. Un vendedor **no la
+ve**: ver sus propios contratos sí puede, desde
+**Contratos**.
+
+Cuatro pestañas:
+
+| Pestaña | Qué es |
+|---|---|
+| **Por cobrar** | Todos los contratos con saldo, **ordenados por retraso** y no por importe |
+| **Vencidas** | Las cuotas que ya pasaron su fecha y siguen con saldo |
+| **Por vencer** | Las que vencen en los próximos días (el aviso se ajusta aquí) |
+| **Antigüedad** | La cartera por tramos de retraso, y qué deudores la concentran |
+
+Se ordena por retraso y no por importe a propósito: un
+cliente que debe 80.000 y va 40 días atrasado no puede
+quedar detrás de uno que debe 3.000 y no ha pagado
+nunca. La urgencia la marca el retraso.
+
+Desde la cartera se cobra. Cada fila tiene tres botones:
+**Adelantado** (varios meses de una vez), **Cobrar** (la
+cuota más antigua) y **Ver** (el detalle del contrato).
+
+### Garantías
+
+Un contrato financiado puede llevar garantías: prenda,
+fijación, aval, un garante tercero, un seguro. Se
+registran desde la pestaña **Garantías** del detalle.
+
+**Un gravamen es una inscripción registral, y el
+programa no tramita inscripciones.** Lo que se guarda
+aquí es lo que el concesionario **afirma**; la forma de
+la inscripción, sus datos y su eficacia hay que
+verificarlos con un abogado y con el escribano. Por eso
+el aviso sale siempre, tenga garantías o no.
+
+Lo mismo con la **retención** y la **mora**: se guardan
+como datos pactados y la aplicación **no calcula
+ninguna obligación fiscal**. Antes de firmar un
+contrato financiado, revisa el porcentaje con un asesor
+fiscal.
+
+Liberar una garantía solo se permite con **saldo
+pendiente cero** y es del administrador: liberar es
+devolverle al cliente su respaldo.
 
 ### Pagos y saldo
 
@@ -380,21 +510,29 @@ concesionario/
 │   ├── test_autos.py           test_ventas.py
 │   ├── test_contratos.py       test_usuarios.py
 │   ├── test_pagos.py           test_reportes.py
+│   ├── test_financiera.py      Cronogramas, cuotas, cobros
+│   ├── test_cobranza.py        Cartera, vencidas, garantías
+│   └── test_cartera.py         Pantallas de la financiera
 │
 ├── database/                   Acceso a datos (todo el SQL aquí)
 │   ├── conexion.py             Lee el .env y abre conexiones
-│   ├── esquema.sql             Estructura completa
+│   ├── esquema.sql             Estructura completa (12 tablas)
 │   ├── marcas.py               autos.py
 │   ├── clientes.py             ventas.py
 │   ├── usuarios.py             auditoria.py
 │   ├── contratos.py            Contratos de compraventa
 │   ├── pagos.py                Cobros y saldo de cada venta
+│   ├── financiera.py           Cronogramas, cuotas y su estado
+│   ├── cobranza.py             Cuentas por cobrar y vencidas
+│   ├── garantias.py            Garantías y gravámenes
 │   ├── configuracion.py        Ajustes
 │   ├── migracion_contratos.sql Para bases ya existentes
 │   ├── migracion_indices.sql   Índices y marcas únicas
 │   ├── migracion_ventas_usuario.sql  Quién registró cada venta
 │   ├── migracion_pagos.sql     Tabla de pagos
 │   ├── migracion_moneda.sql    Claves de moneda configurable
+│   ├── migracion_financiera.sql    Cuotas, garantías y ajustes
+│   ├── migracion_auditoria_cambios.sql  Valor anterior y nuevo
 │   └── reportes.py             Estadísticas y agregados
 │
 ├── gui/                        Interfaz
@@ -407,10 +545,15 @@ concesionario/
 │   ├── autos_view.py           marcas_view.py
 │   ├── clientes_view.py        ventas_view.py
 │   ├── usuarios_view.py        auditoria_view.py
-│   ├── contratos_view.py       contratos_view.py
+│   ├── contratos_view.py       detalle_venta_dialog.py
+│   ├── cartera_view.py         Cartera y cobranza
+│   ├── contrato_detalle_dialog.py  Cronograma, pagos, garantías
 │   ├── reportes_view.py        configuracion_view.py
 │   ├── estilo.css              Apariencia
 │   └── formularios/            Formularios de alta y edición
+│       ├── pago_cuota_form.py    Cobro de una cuota
+│       ├── pago_adelantado_form.py  Cobro de varias cuotas
+│       └── garantia_form.py      Garantías y su inscripción
 │
 ├── documentos/contratos/       PDF generados (se crea sola)
 │
@@ -419,6 +562,7 @@ concesionario/
     ├── helpers.py              Componentes reutilizables
     ├── seguridad.py            Cifrado de contraseñas
     ├── contrato_pdf.py         Maquetación del contrato (Platypus)
+    ├── recibo_pdf.py           Recibo de cobro (Platypus)
     └── registro.py             Registro de errores
 ```
 
@@ -443,15 +587,25 @@ vistas nunca escriben consultas.
 | Eliminar cualquier registro | Sí | **No** |
 | Anular ventas | Sí | **No** |
 | Consultar y **crear** contratos | Sí | Sí |
+| Generar el cronograma de un contrato | Sí | Sí |
+| **Cobrar** cuotas (de una o de varias) | Sí | **No** |
+| Consultar la **cartera** y la cobranza | Sí | **No** |
+| Anular cuotas, pagos y garantías | Sí | **No** |
 | Cancelar o eliminar contratos | Sí | **No** |
 | Reportes | Sí | **No** |
 | Usuarios | Sí | **No** |
 | Auditoría | Sí | **No** |
 | Configuración | Sí | **No** |
 
-El vendedor crea contratos porque son parte de
-la venta, pero no los cancela ni los borra: eso es
-de la administración.
+El vendedor crea contratos y les genera el
+cronograma porque son parte de la venta, pero **no
+cobra**: quedarse con el dinero de un crédito no es
+lo mismo que registrar una venta. Y **no ve la
+cartera**, que dice a cuánto debe cada cliente del
+concesionario con su teléfono, no solo los suyos. Si
+algún día hace falta que alguien externo cobre, la
+respuesta es un **rol nuevo** (`cobrador`), no abrirle
+la cartera al vendedor.
 
 Ocultar un botón no es la protección: cada
 operación de escritura comprueba el permiso en
@@ -544,6 +698,46 @@ aplicación primero.
 
 También aquí: ni una fila se toca.
 
+### Ya tenía datos y quiero las ventas financiadas
+
+Si tu base se creó con una versión anterior a la
+financiación, faltan las cuotas, las garantías y las
+condiciones del contrato. Aplica las dos
+migraciones, **en este orden**:
+
+```bash
+mysql -u root -p concesionario < database/migracion_financiera.sql
+mysql -u root -p concesionario < database/migracion_auditoria_cambios.sql
+```
+
+Qué hace:
+
+- crea las tablas `cuotas`, `garantias` y
+  `convenios`
+- añade a `contratos` las columnas de
+  financiación (saldo financiado, tasa, gastos,
+  periodicidad, primer vencimiento, moneda,
+  retención, cláusulas) **y la fotografía del
+  vehículo** (marca, modelo, año, color, precio de
+  lista)
+- añade a `pagos` la columna `cuota_id`, el
+  `recibo` y las columnas de anulación
+- añade a `auditoria` el valor anterior, el nuevo y
+  la referencia
+- siembra los siete ajustes `financiera_*`
+
+**Ni una fila se toca.** Los contratos que ya
+existían se quedan sin fotografía del vehículo (el
+detalle lo avisa y muestra el dato actual) y **sin
+cronograma**. Los que dicen "12 cuotas" pero no
+tienen ni una cuota en la tabla no se pueden
+generar, porque su saldo financiado está en cero: para
+financiarlos de verdad hay que **rehacerlos desde la
+venta**.
+
+La aplicación te avisa en **Cartera** si hay
+contratos con saldo y sin cronograma.
+
 ### El PDF del contrato no sale
 
 Mira `documentos/contratos/` dentro del proyecto.
@@ -554,6 +748,36 @@ vuelve a generar.
 Si el directorio no se puede escribir, el
 contrato se guarda igual y el aviso explica por
 qué no se pudo escribir el archivo.
+
+### El PDF sale sin la tabla de cuotas
+
+El PDF del contrato imprime el cronograma, así que
+**las cuotas tienen que existir antes de generarlo**.
+En el flujo normal no hay problema: el formulario las
+crea antes de llamar al PDF.
+
+Si ves un contrato con las condiciones pero sin las
+fechas de vencimiento, abre su detalle y pulsa
+**Generar cronograma**.
+
+### Un contrato dice "12 cuotas" y no tiene ninguna
+
+Es un contrato creado **antes** de que existiera la
+financiación, o rehacido sin las condiciones de
+financiación. La aplicación no inventa el cronograma
+porque no sabe de cuánto es cada cuota ni cuándo vence.
+
+Para financiarlo de verdad hay que rehacerlo: en
+**Ventas**, la fila del contrato → **Cancelar**, y
+luego **+ Nuevo contrato** desde la misma venta,
+rellenando la pestaña **Financiación y cronograma**.
+
+### "No tienes permisos para realizar esta acción" al cobrar
+
+Correcto. **Cobrar una cuota es de la
+administración.** El vendedor registra ventas y crea
+contratos con su cronograma, pero no se queda con el
+dinero de un crédito.
 
 ### "No hay ningún usuario creado"
 
@@ -615,7 +839,7 @@ en `tests/`:
 venv\Scripts\python.exe -m pytest
 ```
 
-Son 255 pruebas. **No tocan tus datos**: cada
+Son 471 pruebas. **No tocan tus datos**: cada
 sesión levanta una base temporal llamada
 `pruebas_concesionario` a partir de
 `database/esquema.sql` —es decir, una
@@ -647,3 +871,37 @@ widget. Si añades una vista o un formulario,
 **constrúyelo** antes de darlo por bueno. La
 comprobación completa está en `AGENTS.md`, en
 "Verificación".
+
+Dos cosas que han pasado de verdad y que conviene
+tener presentes:
+
+- **Un `return` con una tupla de más o de menos**
+  rompe al construir la pantalla, no al ejecutar
+  el método. Y si la función devuelve datos que
+  cambió de forma, quien la pinte reventa al abrir
+  la ventana, no con un mensaje: sin ventana.
+- **Una condición que solo se cumple en un camino.**
+  Un formulario que desactiva un campo cuando el
+  pago es de contado, pero que al abrirse ya está en
+  "Contado" sin pasar por esa comprobación, deja el
+  campo activo. Poner el mismo valor que ya tiene no
+  dispara la señal de "cambió": hay que llamar al
+  método al abrir.
+
+Y dos cosas más que son fallos silenciosos, por eso
+merecen nombre propio:
+
+- **Construir una vista no es usarla.** Un método que
+  llama a otro que ya no existe revienta al **pulsar**
+  el botón, no al abrir la pantalla. El botón *Ver* de
+  una venta estuvo roto un tiempo porque le faltaba
+  una función, y ninguna prueba lo notó porque todas
+  construían la vista sin pulsar nada.
+- **Un botón que no se ve no da error.** Si la columna
+  de acciones no está en la lista de cabeceros, la
+  columna no se crea, el botón no se pinta, y la tabla
+  se ve perfectamente normal: solo faltan los botones.
+  `crear_tabla()` **no** añade esa columna. Y el ancho
+  de cada botón hay que medirlo **con la hoja de estilos
+  puesta**, porque sin ella Qt mide con otra fuente y
+  sale otro número.

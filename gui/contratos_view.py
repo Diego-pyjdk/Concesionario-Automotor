@@ -126,9 +126,9 @@ class ContratosView(VistaListado):
 
     ANCHO_PDF = 56
 
-    ANCHO_ESTADO = 64
+    ANCHO_ESTADO = 72
 
-    ANCHO_ELIMINAR = 70
+    ANCHO_ELIMINAR = 94
 
     # Se calcula con los cuatro botones: es el
     # caso más ancho, y es el mismo para todos
@@ -449,9 +449,21 @@ class ContratosView(VistaListado):
 
             return
 
+        # ------------------------------
+        # ABRIR EL FORMULARIO
+        # ------------------------------
+        # Se pasa el ID de la venta, no la fila del
+        # desplegable. El combo se ha construido con
+        # esas filas para que el usuario elija, pero
+        # el formulario busca los datos por su cuenta
+        # con venta_para_contrato(): así solo hay una
+        # forma de fila en toda la aplicación y ningún
+        # constructor tiene que adivinar cuántas
+        # columnas le pasan.
+
         venta = ventas[combo.currentIndex()]
 
-        formulario = ContratoForm(self, venta)
+        formulario = ContratoForm(self, venta[0])
 
         if formulario.exec():
 

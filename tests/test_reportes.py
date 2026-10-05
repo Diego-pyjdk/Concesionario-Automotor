@@ -20,7 +20,6 @@ from database.ventas import registrar_venta
 from database.reportes import (
     obtener_resumen,
     obtener_ventas_del_dia,
-    obtener_top_vehiculos,
     obtener_ventas_por_cliente,
     obtener_detalle_ventas,
     obtener_metricas,

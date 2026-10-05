@@ -14,11 +14,7 @@ import pytest
 
 from database.ventas import registrar_venta, eliminar_venta
 
-from database.contratos import (
-    crear_contrato,
-    obtener_contrato,
-    obtener_contratos
-)
+from database.contratos import crear_contrato
 
 from database.pagos import (
     FORMAS_PAGO,

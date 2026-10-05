@@ -12,7 +12,7 @@
 #
 # Lo que se comprueba:
 #
-#   - las nueve tablas existen
+#   - las doce tablas existen
 #   - ventas.usuario_id tiene su clave foránea
 #     declarada EN LÍNEA, con ON DELETE SET NULL
 #   - el esquema NO usa ALTER TABLE: el orden de
@@ -21,12 +21,17 @@
 #     siempre
 #   - la aplicación opera contra esa base recién
 #     creada: administrador, venta con vendedor,
-#     contrato, pago, saldo y PDF
+#     contrato financiado con su cronograma, cobro de
+#     una cuota, saldos, PDF del contrato y PDF del
+#     recibo
 # ==========================================
 
 
 import pathlib
 import re
+
+from datetime import date
+from decimal import Decimal
 
 from database.conexion import obtener_conexion
 
@@ -39,7 +44,8 @@ ESQUEMA = RAIZ / "database" / "esquema.sql"
 TABLAS = [
     "marcas", "autos", "clientes", "usuarios",
     "ventas", "configuracion", "auditoria",
-    "contratos", "pagos"
+    "contratos", "cuotas", "garantias",
+    "convenios", "pagos"
 ]
 
 # De quién depende cada tabla.
@@ -50,7 +56,11 @@ DEPENDENCIAS = {
     "auditoria": {"usuarios"},
     "contratos": {"ventas", "clientes", "autos",
                   "usuarios"},
-    "pagos": {"ventas", "contratos", "usuarios"}
+    "cuotas": {"contratos"},
+    "pagos": {"ventas", "contratos", "cuotas",
+              "usuarios"},
+    "garantias": {"contratos"},
+    "convenios": {"contratos", "cuotas"}
 }
 
 
@@ -315,17 +325,31 @@ class TestDatosIniciales:
         assert moneda["separador_miles"] == ","
         assert moneda["separador_decimales"] == "."
 
-    def test_no_hay_usuarios_sembrados(self):
+    def test_no_hay_usuarios_sembrados(
+        self, como_administrador
+    ):
         """
         Una contraseña en el repositorio sería una
         puerta abierta. El primer administrador se
         crea con crear_admin.py.
+
+        Y se PIDE la fixture como_administrador, que
+        antes no se pedía. La comprobación de que en
+        el esquema no hay ninguno va contra el ARCHIVO,
+        así que no necesita la base; pero la de que hay
+        un administrador de verdad sí, y antes se
+        apoyaba en que ALGUNA prueba anterior hubiera
+        dejado una cuenta.
+
+        Eso no es una comprobación: es una casualidad
+        del orden. Con este archivo ejecutado solo, o
+        con la suite reordenada, la cuenta no estaba y
+        la prueba fallaba sin que hubiera pasado nada.
+        Pedir la fixture hace que la prueba diga lo que
+        dice: tras crear el administrador, hay uno.
         """
 
         from database.usuarios import hay_usuarios
-
-        # conftest crea uno para las pruebas, pero
-        # en el esquema no hay ninguno sembrado.
 
         contenido = texto_del_esquema()
 
@@ -388,12 +412,73 @@ class TestLaAplicacionSobreLaBaseNueva:
             venta_id=id_venta,
             forma_pago="Anticipo + cuotas",
             anticipo=10000.0,
-            cantidad_cuotas=10
+            cantidad_cuotas=10,
+            periodicidad="mensual",
+            primer_vencimiento=date(2026, 11, 3)
         )
+
+        assert id_contrato is not None, cnumero
 
         assert cnumero.startswith("CTR-2026-")
 
-        # 3. Un pago, y el saldo baja.
+        # ------------------------------
+        # 2b. EL CRONOGRAMA
+        # ------------------------------
+        # Se genera nada más firmar, porque es lo que
+        # hace el formulario. Contra una instalación
+        # nueva, sin esto no se llegaría ni a la
+        # cartera: el módulo de financiación es
+        # precisamente esto.
+
+        from database.financiera import (
+            generar_cronograma,
+            obtener_cuota,
+            obtener_cuotas,
+            registrar_pago_cuota
+        )
+
+        total, motivo = generar_cronograma(id_contrato)
+
+        assert total == 10, motivo
+
+        cuotas = obtener_cuotas(id_contrato)
+
+        # La suma tiene que cuadrar con el saldo
+        # financiado hasta el céntimo: es lo que
+        # sostiene la cartera entera.
+
+        suma = sum(
+            (cuota["importe"] for cuota in cuotas),
+            Decimal("0.00")
+        )
+
+        contrato_visto = obtener_contrato(id_contrato)
+
+        assert suma == contrato_visto["saldo_financiado"]
+
+        # ------------------------------
+        # 3. UN COBRO CONTRA UNA CUOTA
+        # ------------------------------
+        # Con lo cobrado, el saldo de la cuota baja y
+        # la de la venta también. Son las dos cosas
+        # que tienen que cuadrar a la vez.
+
+        id_pago_cuota, motivo = registrar_pago_cuota(
+            cuotas[0]["id"],
+            cuotas[0]["importe"],
+            "2026-11-03",
+            "Efectivo"
+        )
+
+        assert id_pago_cuota is not None, motivo
+
+        assert obtener_cuota(cuotas[0]["id"])["saldo"] == (
+            Decimal("0.00")
+        )
+
+        # ------------------------------
+        # 4. UN PAGO SUELTO
+        # ------------------------------
 
         id_pago, motivo = registrar_pago(
             id_venta, 20000.0, "2026-10-03", "Efectivo"
@@ -401,12 +486,24 @@ class TestLaAplicacionSobreLaBaseNueva:
 
         assert id_pago is not None, motivo
 
+        # El pago de la cuota cuenta para el saldo de
+        # la venta, y el suelto también: los dos van a
+        # la misma tabla.
+
         precio, pagado, saldo = saldo_venta(id_venta)
 
-        assert float(pagado) == 20000.0
-        assert float(saldo) == 30000.0
+        float_pagado = float(pagado)
 
-        # 4. El PDF sale.
+        assert float_pagado == (
+            20000.0 + float(cuotas[0]["importe"])
+        ), (
+            "el cobro de una cuota tiene que bajar el "
+            "saldo de la venta como cualquier otro pago"
+        )
+
+        assert float(saldo) == 50000.0 - float_pagado
+
+        # 5. El PDF sale.
 
         contrato = obtener_contrato(id_contrato)
 
@@ -422,7 +519,42 @@ class TestLaAplicacionSobreLaBaseNueva:
 
         os.remove(ruta)
 
-        # 5. Y el importe sale con la moneda.
+        # 6. Y el recibo del cobro sale.
+
+        from database.pagos import obtener_pagos_detalle
+        from utils.recibo_pdf import generar_recibo
+
+        pagos = obtener_pagos_detalle(id_venta)
+
+        assert len(pagos) == 2
+
+        recibo_pago = next(
+            p for p in pagos
+            if p["cuota_id"] == cuotas[0]["id"]
+        )
+
+        assert recibo_pago["recibo"], (
+            "un cobro de cuota se guarda con número de "
+            "recibo: es lo que se le lleva el cliente"
+        )
+
+        destino_recibo = os.path.join(
+            tempfile.gettempdir(),
+            "recibo_prueba_instalacion.pdf"
+        )
+
+        ruta_recibo = generar_recibo(
+            recibo_pago,
+            contrato,
+            obtener_cuota(cuotas[0]["id"])
+        )
+
+        assert os.path.exists(ruta_recibo)
+        assert os.path.getsize(ruta_recibo) > 500
+
+        os.remove(ruta_recibo)
+
+        # 7. Y el importe sale con la moneda.
 
         assert moneda.formato_dinero(
             36500

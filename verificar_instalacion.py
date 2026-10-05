@@ -325,17 +325,28 @@ def comprobar_esquema():
         "marcas", "autos", "clientes",
         "ventas", "usuarios",
         "configuracion", "auditoria",
-        "contratos", "pagos"
+        "contratos", "cuotas", "garantias",
+        "convenios", "pagos"
     ]
 
     # Cada tabla que falte dice qué migración
     # aplicar, en vez de mandar siempre a la de
     # contratos: si a alguien le falta pagos, la
     # de contratos no le va a servir de nada.
+    #
+    # Las cuatro de financiación (cuotas, garantias,
+    # convenios, y las columnas nuevas de contratos y
+    # pagos) vienen TODAS de una migración sola: están
+    # en el mismo archivo porque si se aplicara parte y
+    # luego no la otra, pagos.cuota_fk apuntaría a una
+    # tabla que no existe.
 
     AYUDA_MIGRACION = {
         "contratos": "database/migracion_contratos.sql",
-        "pagos": "database/migracion_pagos.sql"
+        "pagos": "database/migracion_pagos.sql",
+        "cuotas": "database/migracion_financiera.sql",
+        "garantias": "database/migracion_financiera.sql",
+        "convenios": "database/migracion_financiera.sql"
     }
 
     cursor.execute("SHOW TABLES")
@@ -394,6 +405,82 @@ def comprobar_esquema():
             "Falta la columna documento en "
             "clientes.",
             "Ejecute database/migracion_contratos.sql"
+        )
+
+    # Las columnas de financiación. Una base que
+    # tenga la tabla cuotas pero le falte, por
+    # ejemplo, contratos.saldo_financiado, tiene el
+    # módulo a medias: el código leería columnas que
+    # no existen y reventaría al firmar una venta
+    # financiada.
+    #
+    # Todas vienen de migracion_financiera.sql.
+
+    COLUMNAS_FINANCIERAS = [
+        ("contratos", "saldo_financiado"),
+        ("contratos", "tasa_interes"),
+        ("contratos", "monto_cuota"),
+        ("contratos", "periodicidad"),
+        ("contratos", "moneda"),
+        ("contratos", "marca"),
+        ("contratos", "clausulas"),
+        ("pagos", "cuota_id"),
+        ("pagos", "recibo"),
+        ("pagos", "estado")
+    ]
+
+    faltan_columnas = []
+
+    for tabla, columna in COLUMNAS_FINANCIERAS:
+
+        cursor.execute(
+            f"SHOW COLUMNS FROM {tabla} LIKE '{columna}'"
+        )
+
+        if not cursor.fetchone():
+
+            faltan_columnas.append(f"{tabla}.{columna}")
+
+    if faltan_columnas:
+
+        fallo(
+            "Faltan columnas de financiación: "
+            + ", ".join(faltan_columnas),
+            "Ejecute database/migracion_financiera.sql: "
+            "no borra ninguna fila."
+        )
+
+    else:
+
+        ok(
+            f"Columnas de financiación "
+            f"({len(COLUMNAS_FINANCIERAS)})"
+        )
+
+    # Y la clave foránea del pago a la cuota. Si
+    # existe la columna pero no la FK, la base
+    # aceptaría imputar un pago a una cuota de otro
+    # contrato, y el saldo de esa cuota diría una cosa
+    # y el del contrato otra.
+
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM information_schema.TABLE_CONSTRAINTS
+        WHERE CONSTRAINT_SCHEMA = DATABASE()
+          AND CONSTRAINT_NAME = 'pagos_cuota_fk'
+          AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+    """)
+
+    if cursor.fetchone()[0] == 1:
+
+        ok("Clave foránea pagos.cuota_id -> cuotas")
+
+    else:
+
+        fallo(
+            "Falta la clave foránea pagos.cuota_fk",
+            "Ejecute database/migracion_financiera.sql: "
+            "la columna puede existir sin su clave."
         )
 
     cursor.close()
@@ -457,6 +544,17 @@ def comprobar_aplicacion():
 
     sys.path.insert(0, RAIZ)
 
+    # Cada módulo que, si no carga, deja algo de la
+    # aplicación sin funcionar. Se listan TODOS los
+    # que usan PySide6, MySQL o reportlab: un módulo
+    # que falla al importar no da error al arrancar,
+    # da error cuando alguien abre esa pantalla.
+    #
+    # Y los formularios van todos, no solo el de
+    # contrato: cada uno es un archivo que puede
+    # tener un import mal escrito y no se va a notar
+    # hasta que alguien intenta firmar una venta.
+
     modulos = [
         "main",
         "sesion",
@@ -466,18 +564,50 @@ def comprobar_aplicacion():
         "gui.login_view",
         "gui.vista_listado",
         "gui.vista_base",
-        "gui.auditoria_view",
-        "gui.diagnostico",
+        "gui.dashboard_view",
+        "gui.autos_view",
+        "gui.marcas_view",
+        "gui.clientes_view",
+        "gui.ventas_view",
         "gui.contratos_view",
+        "gui.cartera_view",
+        "gui.contrato_detalle_dialog",
+        "gui.detalle_venta_dialog",
+        "gui.auditoria_view",
+        "gui.usuarios_view",
+        "gui.reportes_view",
+        "gui.configuracion_view",
+        "gui.diagnostico",
+        "gui.formularios.marca_form",
+        "gui.formularios.auto_form",
+        "gui.formularios.cliente_form",
+        "gui.formularios.venta_form",
+        "gui.formularios.pago_form",
+        "gui.formularios.usuario_form",
         "gui.formularios.contrato_form",
+        "gui.formularios.pago_cuota_form",
+        "gui.formularios.pago_adelantado_form",
+        "gui.formularios.garantia_form",
+        "database.conexion",
         "database.reportes",
         "database.auditoria",
         "database.usuarios",
+        "database.ventas",
+        "database.clientes",
+        "database.autos",
+        "database.marcas",
+        "database.pagos",
         "database.contratos",
+        "database.financiera",
+        "database.cobranza",
+        "database.garantias",
+        "database.configuracion",
         "utils.helpers",
         "utils.validaciones",
         "utils.seguridad",
-        "utils.contrato_pdf"
+        "utils.moneda",
+        "utils.contrato_pdf",
+        "utils.recibo_pdf"
     ]
 
     for nombre in modulos:

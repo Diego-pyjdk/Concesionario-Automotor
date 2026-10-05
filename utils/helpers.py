@@ -26,7 +26,6 @@ from PySide6.QtGui import QColor
 from PySide6.QtCore import Qt, QTimer
 
 from errores import (
-    ErrorSistema,
     ErrorValidacion,
     PermisoDenegado
 )
@@ -186,8 +185,8 @@ def crear_botones_accion(
     texto_eliminar="Eliminar",
     mostrar_eliminar=True,
     acciones_extra=None,
-    ancho_editar=60,
-    ancho_eliminar=72
+    ancho_editar=72,
+    ancho_eliminar=94
 ):
     """
     Contenedor con los botones de acción que se
@@ -215,6 +214,25 @@ def crear_botones_accion(
     Los tres anchos tienen que casar con lo que
     devuelva ancho_acciones_para(), o los
     botones se salen de su celda.
+
+    ------------------------------
+    # LOS ANCHOS POR DEFECTO
+    # ------------------------------
+
+    72 y 94, MEDIDOS con la hoja de estilos puesta:
+    "Editar" pide 68 y "Eliminar" pide 90 con
+    `QPushButton#boton_editar` (11 px, negrita, sin
+    relleno). Antes eran 60 y 72, y las dos palabras
+    salían recortadas en clientes, autos, marcas y
+    usuarios.
+
+    Se miden CON la hoja puesta a propósito: sin ella
+    Qt mide con la fuente por defecto y con su relleno,
+    y "Eliminar" pide 110 en vez de 90. Arreglar los
+    anchos con esa medición los deja todavía más
+    cortos, porque el error va al revés.
+    `test_los_botones_no_se_recortan` los comprueba
+    todos contra `sizeHint()`, con la hoja puesta.
 
     Las callbacks reciben la fila como argumento,
     así que quien las conecta debe capturar el
@@ -264,9 +282,24 @@ def crear_botones_accion(
         texto_eliminar
     )
 
-    boton_eliminar.clicked.connect(
-        al_eliminar
-    )
+    # ------------------------------
+    # SOLO SE CONECTA SI SE MUESTRA
+    # ------------------------------
+    # Conectar un None revienta: clicked.connect(None)
+    # da "Expected signal or callable, got NoneType".
+    #
+    # Antes se conectaba siempre y el botón se
+    # añadía al layout solo si mostrar_eliminar, así
+    # que pasar (al_eliminar=None, mostrar_eliminar=
+    # False) reventaba al construir la fila. Como
+    # hasta ahora todo el mundo pasaba la función de
+    # borrar, no se había visto nunca.
+
+    if al_eliminar is not None:
+
+        boton_eliminar.clicked.connect(
+            al_eliminar
+        )
 
     acciones.addWidget(
         boton_editar

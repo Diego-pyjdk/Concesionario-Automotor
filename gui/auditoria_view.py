@@ -422,14 +422,41 @@ class AuditoriaView(VistaBase):
 
         for fila, registro in enumerate(registros):
 
-            (
-                id_registro,
-                fecha_hora,
-                usuario,
-                accion,
-                modulo,
-                descripcion
-            ) = registro
+            # Se leen por ÍNDICE y no desempaquetando.
+
+            # Desempaquetar con
+            #
+            #     a, b, c, d, e, f = registro
+            #
+            # revienta en cuanto obtener_auditoria() cae
+            # una columna más, y revienta EN PANTALLA, al
+            # construir la vista, no en los datos: la
+            # aplicación no arranca y no hay ni un mensaje
+            # que diga qué pasó.
+
+            # Pasó al añadir valor_anterior, valor_nuevo
+            # y referencia. Leer por índice no se rompe
+            # con la próxima columna que se añada, y si
+            # faltara alguna daría IndexError con su
+            # número, que sí dice algo.
+
+            fecha_hora = registro[1]
+
+            usuario = registro[2]
+
+            accion = registro[3]
+
+            modulo = registro[4]
+
+            descripcion = registro[5]
+
+            valor_anterior = (
+                registro[6] if len(registro) > 6 else None
+            )
+
+            valor_nuevo = (
+                registro[7] if len(registro) > 7 else None
+            )
 
             self.tabla.setItem(
                 fila,
@@ -464,12 +491,59 @@ class AuditoriaView(VistaBase):
             self.tabla.setItem(
                 fila,
                 4,
-                celda(descripcion or "")
+                celda(self.texto_cambio(
+                    descripcion,
+                    valor_anterior,
+                    valor_nuevo
+                ))
             )
 
     # =============================
     # FORMATO
     # =============================
+
+    def texto_cambio(
+        self, descripcion, valor_anterior, valor_nuevo
+    ):
+        """
+        La descripción de una entrada, con el valor
+        anterior y el nuevo cuando los hay.
+
+        Por qué se pinte una sola columna y no dos: en
+        un rastro, lo que importa es "qué pasó y de
+        qué a qué" en la misma línea. En dos columnas
+        habría que casar mentalmente la de antes con la
+        de después, y con movementos de cuarenta por
+        pantalla eso no se hace.
+
+        Y por qué un "(sin dato)" explícito donde no
+        los hay: una celda vacía no se distingue de un
+        valor anterior que era cadena vacía. Aquí lo
+        que hay es lo segundo, y es información: la
+        entrada es de antes de que existieran las
+        columnas, y no tiene sentido fingir que el valor
+        anterior era vacío.
+        """
+
+        if valor_anterior is None and valor_nuevo is None:
+
+            return descripcion or ""
+
+        partes = [descripcion or ""]
+
+        if valor_anterior is None:
+
+            partes.append(f"(sin dato → {valor_nuevo})")
+
+        elif valor_nuevo is None:
+
+            partes.append(f"({valor_anterior} → sin dato)")
+
+        else:
+
+            partes.append(f"({valor_anterior} → {valor_nuevo})")
+
+        return " ".join(partes)
 
     def texto_fecha(self, valor):
         """
@@ -539,20 +613,37 @@ class AuditoriaView(VistaBase):
 
         self.cargar_datos()
 
-    def exportar_csv(self):
+    def exportar_csv(self, ruta=None):
+        """
+        Exporta el rastro a CSV.
 
-        from PySide6.QtWidgets import QFileDialog
+        "ruta" es opcional a propósito. Sin ella se
+        pregunta con el diálogo, que es lo que hace
+        el usuario. Con ella se escribe directamente,
+        que es lo que necesitan las pruebas.
 
-        ruta, _ = QFileDialog.getSaveFileName(
-            self,
-            "Exportar auditoría",
-            "auditoria.csv",
-            "CSV (*.csv)"
-        )
+        Preguntar DÓNDE y escribir QUÉ son dos cosas:
+        mezcladas, el único modo de comprobar la
+        escritura es pinchando el diálogo, y así el
+        formato del CSV no se puede comprobar nunca.
+        El desempaquetado roto que había aquí abajo
+        sobrevivió months precisamente por eso.
+        """
 
-        if not ruta:
+        if ruta is None:
 
-            return
+            from PySide6.QtWidgets import QFileDialog
+
+            ruta, _ = QFileDialog.getSaveFileName(
+                self,
+                "Exportar auditoría",
+                "auditoria.csv",
+                "CSV (*.csv)"
+            )
+
+            if not ruta:
+
+                return
 
         filtros = self.obtener_filtros()
 
@@ -577,32 +668,49 @@ class AuditoriaView(VistaBase):
 
                 archivo.write(
                     "id;fecha;usuario;accion;modulo;"
-                    "descripcion\n"
+                    "descripcion;valor_anterior;valor_nuevo;"
+                    "referencia\n"
                 )
 
                 for registro in registros:
 
-                    (
-                        id_registro,
-                        fecha_hora,
-                        usuario,
-                        accion,
-                        modulo,
-                        descripcion
-                    ) = registro
+                    # Por índice, igual que en la tabla:
+                    # desempaquetar se rompe en cuanto
+                    # obtener_auditoria() devuelve una
+                    # columna más, y aquí además costaría
+                    # un fichero entero.
+
+                    valores = [
+                        str(registro[0]),
+                        str(registro[1]),
+                        registro[2] or "",
+                        ACCIONES.get(registro[3], registro[3]),
+                        MODULOS.get(registro[4], registro[4]),
+                        (registro[5] or "").replace(";", ",")
+                    ]
+
+                    # Las tres nuevas, si están. El
+                    # CSV las lleva porque es lo que se
+                    # lleva para revisar el rastro fuera
+                    # del programa, y un cambio sin su
+                    # valor anterior no sirve de nada ahí.
+
+                    for indice in (6, 7, 8):
+
+                        if len(registro) > indice:
+
+                            valores.append(
+                                (registro[indice] or "").replace(
+                                    ";", ","
+                                )
+                            )
+
+                        else:
+
+                            valores.append("")
 
                     archivo.write(
-                        ";".join([
-                            str(id_registro),
-                            str(fecha_hora),
-                            usuario or "",
-                            ACCIONES.get(accion, accion),
-                            MODULOS.get(modulo, modulo),
-                            (descripcion or "").replace(
-                                ";",
-                                ","
-                            )
-                        ]) + "\n"
+                        ";".join(valores) + "\n"
                     )
 
         except OSError as error:

@@ -21,6 +21,8 @@
 
 import datetime
 
+from decimal import Decimal, InvalidOperation
+
 import mysql.connector
 
 from database.conexion import (
@@ -28,7 +30,12 @@ from database.conexion import (
     obtener_conexion
 )
 
-from database.auditoria import registrar_accion
+from database.auditoria import (
+    registrar_accion,
+    registrar_cambio
+)
+
+import database.financiera as financiera
 
 import sesion as modulo_sesion
 
@@ -40,6 +47,8 @@ from permisos import (
 )
 
 from errores import traducir_error
+
+from utils.moneda import formato_dinero
 
 
 # ==========================================
@@ -72,6 +81,297 @@ TRANSICIONES = {
 }
 
 ESTADO_INICIAL = "activo"
+
+
+def _a_importe(valor, nombre):
+    """
+    Un importe a Decimal, o (None, motivo).
+
+    El dinero entra como float desde los formularios y
+    sale como Decimal de la base, y "Decimal menos
+    float" es un TypeError que no dice nada del
+    contrato. Aquí se normaliza todo una vez, antes de
+    tocar la base.
+
+    Se convierte por la CADENA y no con float(): el
+    float() de un número con más de 15 dígitos ya ha
+    perdido precisión al entrar, y convertirlo a
+    Decimal después no lo recupera.
+    """
+
+    if valor is None:
+
+        return (Decimal("0.00"), "")
+
+    if isinstance(valor, Decimal):
+
+        return (valor, "")
+
+    try:
+
+        return (Decimal(str(valor)), "")
+
+    except (InvalidOperation, TypeError, ValueError):
+
+        return (
+            None,
+            f"{nombre} tiene que ser un número."
+        )
+
+
+# ==========================================
+# LO QUE SE FINANCIARÍA
+# ==========================================
+
+def _validar_financiacion(
+    cantidad_cuotas,
+    tasa_interes,
+    periodicidad,
+    primer_vencimiento,
+    gastos_administrativos,
+    retencion,
+    retencion_monto
+):
+    """
+    Comprueba y normaliza las condiciones económicas
+    de un contrato.
+
+    Devuelve un diccionario con todo ya limpio, o un
+    STRING con el motivo del rechazo.
+
+    Devuelve la cadena y no una tupla tipo
+    (ok, valor) porque el valor es un diccionario de
+    siete campos y no cabe bien en una tupla: se
+    acabaría desempacando con un *resultado que
+    mezcla el "ok" con la primera clave.
+
+    ------------------------------
+    POR QUÉ AQUÍ Y NO EN EL FORMULARIO
+    ------------------------------
+    Porque las tres guardas duras son de un
+    documento firmado. Un contrato es papel que va
+    a un juez, y si queda guardado con una retención
+    del 400 % o una periodicidad que no existe, eso
+    ya no lo arregla nadie.
+
+    El formulario avisa antes, que es más cómodo, pero
+    lo que decide es esto.
+
+    ------------------------------
+    LO QUE NO SE COMPRUEBA
+    ------------------------------
+    Que la tasa sea la del mercado, que los gastos
+    sean razonables o que la retención sea la que
+    manda. Eso depende de la legislación y de un
+    asesor, y un programa no puede resolverlo. El
+    campo de retención existe para que el dato quede
+    REGISTRADO, no para que la aplicación calcule una
+    obligación fiscal.
+    """
+
+    ajustes = {
+        "cantidad_cuotas": 0,
+        "tasa_interes": Decimal("0.000"),
+        "periodicidad": financiera.PERIODICIDAD_POR_DEFECTO,
+        "gastos_administrativos": Decimal("0.00"),
+        "retencion": Decimal("0.000"),
+        "retencion_monto": Decimal("0.00")
+    }
+
+    # ------------------------------
+    # NÚMEROS
+    # ------------------------------
+
+    try:
+
+        ajustes["tasa_interes"] = Decimal(
+            str(tasa_interes or 0)
+        )
+
+        ajustes["gastos_administrativos"] = Decimal(
+            str(gastos_administrativos or 0)
+        )
+
+        ajustes["retencion"] = Decimal(
+            str(retencion or 0)
+        )
+
+        ajustes["retencion_monto"] = Decimal(
+            str(retencion_monto or 0)
+        )
+
+    except (InvalidOperation, TypeError, ValueError):
+
+        return (
+            "Los importes de la financiación tienen "
+            "que ser números."
+        )
+
+    try:
+
+        ajustes["cantidad_cuotas"] = int(
+            cantidad_cuotas or 0
+        )
+
+    except (TypeError, ValueError):
+
+        return "La cantidad de cuotas tiene que ser un número."
+
+    # ------------------------------
+    # NEGATIVOS
+    # ------------------------------
+
+    if ajustes["cantidad_cuotas"] < 0:
+
+        return "La cantidad de cuotas no puede ser negativa."
+
+    if ajustes["tasa_interes"] < 0:
+
+        return "La tasa de interés no puede ser negativa."
+
+    if ajustes["gastos_administrativos"] < 0:
+
+        return (
+            "Los gastos administrativos no pueden "
+            "ser negativos."
+        )
+
+    if ajustes["retencion"] < 0:
+
+        return "La retención no puede ser negativa."
+
+    if ajustes["retencion_monto"] < 0:
+
+        return (
+            "La retención en importe no puede ser "
+            "negativa."
+        )
+
+    # ------------------------------
+    # LÍMITES
+    # ------------------------------
+
+    ajustes_financiera = financiera.leer_ajustes()
+
+    maximo = ajustes_financiera["maximo_cuotas"]
+
+    if ajustes["cantidad_cuotas"] > maximo:
+
+        return (
+            f"No se admiten más de {maximo} cuotas. "
+            "Un crédito a más de seis años tiene que "
+            "hacerse con un contrato aparte, no con "
+            "una lista interminable."
+        )
+
+    if ajustes["retencion"] > 100:
+
+        return (
+            "La retención no puede pasar del 100 %: "
+            "entonces no cobraría nada."
+        )
+
+    if (
+        ajustes["retencion"] > 0
+        and ajustes["retencion_monto"] > 0
+    ):
+
+        return (
+            "La retención va en porcentaje o en "
+            "importe, no en las dos cosas a la vez: "
+            "no se sabe cuál manda."
+        )
+
+    # ------------------------------
+    # CUOTAS
+    # ------------------------------
+
+    if ajustes["cantidad_cuotas"] == 0:
+
+        # Sin cuotas no hay nada que repartir, y por
+        # eso no se exige periodicidad ni primer
+        # vencimiento: un contrato de contado lleva
+        # los dos a NULL y es correcto.
+
+        return ajustes
+
+    if (
+        periodicidad is not None
+        and periodicidad not in
+        financiera.TODAS_LAS_PERIODICIDADES
+    ):
+
+        return (
+            f"Periodicidad '{periodicidad}' no válida. "
+            f"Vale: "
+            f"{', '.join(financiera.TODAS_LAS_PERIODICIDADES)}."
+        )
+
+    if periodicidad:
+
+        ajustes["periodicidad"] = periodicidad
+
+    if primer_vencimiento is None:
+
+        return (
+            "Con cuotas hay que decir cuándo vence "
+            "la primera: sin fecha no hay cronograma."
+        )
+
+    if not isinstance(primer_vencimiento, datetime.date):
+
+        return (
+            "La fecha del primer vencimiento no es "
+            "una fecha válida."
+        )
+
+    # ------------------------------
+    # UN VENCIMIENTO EN EL PASADO
+    # ------------------------------
+    # No se rechaza: hay contratos nuevos con
+    # vencimientos que ya pasaron, y se corrigen a
+    # mano desde la base. Lo que no se puede es
+    # dejar pasar un cronograma entero, y eso lo
+    # comprueba generar_cronograma() cuando ve que
+    # todas las fechas ya pasaron.
+    #
+    # Se avisa aquí, en vez de callar, porque un
+    # vencimiento pasado suele ser un error de
+    # tecleo y es mejor enterarse al firmar que al
+    # primer cobro.
+
+    if primer_vencimiento < datetime.date.today():
+
+        ajustes["vencimiento_en_pasado"] = True
+
+    return ajustes
+
+
+def formato_decimal(valor):
+    """
+    Un Decimal con los decimales que tenga, sin
+    ceros de más.
+
+    La tasa va a tres decimales en la tabla
+    (DECIMAL(6,3)) y a dos en las cuotas, así que
+    str() a secas saldría "12.000" donde la
+    pantalla muestra "12". En el rastro eso parece
+    una tasa distinta de la que se firmó.
+    """
+
+    try:
+
+        numero = Decimal(str(valor))
+
+    except (InvalidOperation, TypeError, ValueError):
+
+        return str(valor)
+
+    if numero == numero.to_integral_value():
+
+        return f"{numero:.0f}"
+
+    return f"{numero:f}".rstrip("0").rstrip(".")
 
 
 # ==========================================
@@ -112,6 +412,46 @@ def nombre_archivo(numero):
 
 
 # ==========================================
+# LOS DATOS DE UNA VENTA PARA EL CONTRATO
+# ==========================================
+# El SELECT de las dos consultas siguientes, en un
+# solo sitio.
+#
+# Está aquí y no repetido en cada función porque las
+# dos TIENEN que devolver la misma forma: si una
+# añadiera una columna y la otra no, el formulario
+# desempaquetaría un número distinto según por dónde
+# se abriera. Y eso no falla al escribir el código:
+# falla cuando alguien crea un contrato desde Ventas,
+# que es el camino normal.
+#
+# Es el mismo contrato de columnas que
+# obtener_ventas(), menos el vendedor: el contrato lo
+# copia al crearse y el detalle lo lee de
+# contratos.usuario_nombre.
+
+DATOS_VENTA = """
+    SELECT
+        ventas.id,
+        ventas.fecha,
+        CONCAT(
+            clientes.nombre, ' ', clientes.apellido
+        ) AS cliente,
+        CONCAT(
+            marcas.nombre, ' ', autos.modelo
+        ) AS vehiculo,
+        ventas.precio
+    FROM ventas
+    INNER JOIN clientes
+        ON ventas.cliente_id = clientes.id
+    INNER JOIN autos
+        ON ventas.auto_id = autos.id
+    INNER JOIN marcas
+        ON autos.marca_id = marcas.id
+"""
+
+
+# ==========================================
 # CONSULTA
 # ==========================================
 
@@ -124,11 +464,23 @@ CONTRATO_BASE = """
         contratos.precio_venta,
         contratos.forma_pago,
         contratos.anticipo,
+        contratos.saldo_financiado,
+        contratos.tasa_interes,
+        contratos.gastos_administrativos,
+        contratos.monto_cuota,
         contratos.cantidad_cuotas,
+        contratos.periodicidad,
+        contratos.primer_vencimiento,
+        contratos.dia_vencimiento,
+        contratos.moneda,
+        contratos.retencion,
+        contratos.retencion_monto,
+        contratos.clausulas,
         contratos.observaciones,
         contratos.estado,
         contratos.archivo_pdf,
         contratos.fecha_creacion,
+        contratos.fecha_modificacion,
         contratos.cliente_id,
         CONCAT(
             clientes.nombre, ' ', clientes.apellido
@@ -140,11 +492,18 @@ CONTRATO_BASE = """
         CONCAT(
             marcas.nombre, ' ', autos.modelo
         ) AS vehiculo,
-        autos.anio,
-        autos.color,
-        autos.precio AS precio_lista,
-        marcas.nombre AS marca,
-        autos.modelo AS modelo,
+        -- El vehículo se lee de la FOTOGRAFÍA del
+        -- contrato (marcas.nombre y autos.modelo son
+        -- el dato actual, no el de la firma). Un
+        -- contrato ya firmado no puede cambiar solo
+        -- porque alguien corrija el vehículo después.
+        contratos.marca,
+        contratos.modelo,
+        contratos.anio,
+        contratos.color,
+        contratos.precio_lista,
+        marcas.nombre AS marca_actual,
+        autos.modelo AS modelo_actual,
         contratos.usuario_id,
         COALESCE(usuarios.nombre_usuario, '(eliminado)')
             AS usuario,
@@ -252,34 +611,25 @@ def ventas_sin_contrato():
     Es la lista desde la que se crea: la venta
     es el punto de partida del contrato, no al
     revés.
+
+    Contrato de columnas: id, fecha, cliente,
+    vehiculo, precio. Las MISMAS que devuelve
+    venta_para_contrato(), para que quien pinta la
+    lista y quien abre el formulario trabajen con
+    la misma forma.
     """
 
     conexion = obtener_conexion()
     cursor = conexion.cursor()
 
-    consulta = """
-        SELECT
-            ventas.id,
-            ventas.fecha,
-            CONCAT(
-                clientes.nombre, ' ', clientes.apellido
-            ) AS cliente,
-            CONCAT(
-                marcas.nombre, ' ', autos.modelo
-            ) AS vehiculo,
-            ventas.precio
-        FROM ventas
-        INNER JOIN clientes
-            ON ventas.cliente_id = clientes.id
-        INNER JOIN autos
-            ON ventas.auto_id = autos.id
-        INNER JOIN marcas
-            ON autos.marca_id = marcas.id
+    consulta = (
+        DATOS_VENTA + """
         LEFT JOIN contratos
             ON contratos.venta_id = ventas.id
         WHERE contratos.id IS NULL
         ORDER BY ventas.id DESC
-    """
+        """
+    )
 
     cursor.execute(consulta)
 
@@ -289,6 +639,104 @@ def ventas_sin_contrato():
     conexion.close()
 
     return ventas
+
+
+def venta_para_contrato(id_venta):
+    """
+    Los datos de UNA venta, en la misma forma que
+    ventas_sin_contrato().
+
+    Devuelve la tupla, o None si la venta no existe
+    o ya tiene un contrato vivo.
+
+    ------------------------------
+    # POR QUÉ EXISTE
+    # ------------------------------
+
+    Porque el formulario de contrato se abría desde
+    dos sitios con DOS formas distintas de fila:
+
+      - desde Contratos, una fila de
+        ventas_sin_contrato(): 5 columnas.
+      - desde Ventas, una fila de obtener_ventas():
+        6 columnas, porque esa trae el vendedor.
+
+    El formulario desempaquetaba 5 en ambos casos, así
+    que el camino de Ventas —crear el contrato al
+    confirmar una venta, que es el flujo principal— salía
+    con "too many values to unpack" y la aplicación se
+    caía de espaldas.
+
+    Y no se arregla con que el formulario acepte las
+    dos: eso deja un constructor que adivina cuántas
+    columnas le han pasado, y el día que obtener_ventas()
+    devuelva otra cosa, vuelve a caer.
+
+    Aquí solo hay una forma, y es la que necesita.
+
+    ------------------------------
+    # Y EL VENDEDOR
+    # ------------------------------
+
+    No se trae aquí a propósito: el contrato ya lo
+    copia al crearse, y el detalle lo lee de
+    contratos.usuario_nombre. Meterlo aquí solo
+    haría que las dos consultas dejaran de parecerse.
+    """
+
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+
+    cursor.execute(
+        DATOS_VENTA + """
+        WHERE ventas.id = %s
+        """,
+        (id_venta,)
+    )
+
+    fila = cursor.fetchone()
+
+    if not fila:
+
+        cursor.close()
+        conexion.close()
+
+        return None
+
+    # ------------------------------
+    # ¿YA TIENE CONTRATO VIVO?
+    # ------------------------------
+    # Se pregunta aparte y no con un JOIN: un
+    # contrato cancelado no cuenta, y un JOIN con
+    # "estado <> cancelado" devolvería la fila
+    # aunque el único contrato fuera cancelado.
+    #
+    # Y que lo compruebe la capa de datos, y no el
+    # formulario, es lo mismo que hace
+    # crear_contrato(): que la garantía la pongas
+    # donde la pongas, no se pueda firmar dos.
+
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM contratos
+        WHERE venta_id = %s
+          AND estado <> 'cancelado'
+        """,
+        (id_venta,)
+    )
+
+    if cursor.fetchone()[0]:
+
+        cursor.close()
+        conexion.close()
+
+        return None
+
+    cursor.close()
+    conexion.close()
+
+    return fila
 
 
 @requiere_permiso(VER_CONTRATOS)
@@ -347,7 +795,17 @@ def crear_contrato(
     anticipo=0,
     cantidad_cuotas=0,
     observaciones=None,
-    estado=ESTADO_INICIAL
+    estado=ESTADO_INICIAL,
+    saldo_financiado=None,
+    tasa_interes=0,
+    periodicidad=None,
+    primer_vencimiento=None,
+    gastos_administrativos=0,
+    retencion=0,
+    retencion_monto=0,
+    clausulas=None,
+    moneda=None,
+    fecha_financiacion=None
 ):
     """
     Crea el contrato de una venta.
@@ -358,8 +816,72 @@ def crear_contrato(
     puede cambiar solo porque alguien edite el
     vehículo después.
 
-    Devuelve (id_contrato, "") o (None, motivo).
+    Lo mismo con el vehículo: se guarda la marca,
+    el modelo, el año, el color y el precio de
+    lista TAL COMO ESTÁN al firmar, y de ahí en
+    adelante se leen de ahí y no de un JOIN. Sin
+    esa fotografía, corregir el precio de un auto
+    cambiaría el contrato ya firmado por el
+    cliente.
+
+    Y las condiciones económicas se congelan aquí:
+    saldo financiado, tasa, gastos, retención,
+    periodicidad, primer vencimiento, moneda y
+    cláusulas. Un contrato firmado dice lo que
+    decía, aunque alguien toque los valores de los
+    que se calculó.
+
+    Devuelve (id_contrato, numero) o
+    (None, motivo).
+
+    ------------------------------
+    LO QUE NO SE CALCULA AQUÍ
+    ------------------------------
+    Las cuotas NO se generan aquí. Se generan con
+    generar_cronograma() (database/financiera.py),
+    que es la única que sabe repartir un total en
+    cuotas sin que la última se lleve el residuo.
+
+    Y por eso el contrato se puede firmar con
+    "12 cuotas" y quedarse sin cronograma: la
+    cartera avisa de eso y el detalle ofrece
+    generarlo. Meterlo en la misma transacción
+    dejaría un contrato a medias si el reparto
+    fallara, y un contrato sin cronograma se
+    arregla; un contrato con la mitad de las
+    cuotas, no.
     """
+
+    # ------------------------------
+    # EL DINERO, EN DECIMAL
+    # ------------------------------
+    # Antes de nada, porque el precio sale de la base
+    # como Decimal y el anticipo suele llegar como
+    # float desde un formulario: Decimal menos float
+    # revienta con un TypeError que no dice nada
+    # sobre el contrato.
+    #
+    # Se normaliza aquí y no en quien llama porque hay
+    # dos llamadas distintas (el formulario y quien
+    # use la función desde un script) y convertirlas
+    # en un sitio y no en el otro es como aparece un
+    # bug que solo se da por un camino.
+
+    anticipo, motivo = _a_importe(anticipo, "El anticipo")
+
+    if anticipo is None:
+
+        return (None, motivo)
+
+    if saldo_financiado is not None:
+
+        saldo_financiado, motivo = _a_importe(
+            saldo_financiado, "El saldo financiado"
+        )
+
+        if saldo_financiado is None:
+
+            return (None, motivo)
 
     # ------------------------------
     # COMPROBACIONES
@@ -402,6 +924,35 @@ def crear_contrato(
             "cuotas: el pago es completo."
         )
 
+    # ------------------------------
+    # LO QUE SE FINANCIARÍA
+    # ------------------------------
+    # Antes de abrir la conexión, porque solo
+    # hacen falta los números que ya trae quien
+    # llama. Si alguno no cuadra, se devuelve sin
+    # haber tocado nada en la base.
+
+    ajustes = _validar_financiacion(
+        cantidad_cuotas=cantidad_cuotas,
+        tasa_interes=tasa_interes,
+        periodicidad=periodicidad,
+        primer_vencimiento=primer_vencimiento,
+        gastos_administrativos=gastos_administrativos,
+        retencion=retencion,
+        retencion_monto=retencion_monto
+    )
+
+    if isinstance(ajustes, str):
+
+        return (None, ajustes)
+
+    # ------------------------------
+    # EL SALDO, SI NO SE DIJO
+    # ------------------------------
+    # No aquí: sale del precio de la VENTA, que se
+    # lee dentro de la transacción, y no de lo que
+    # trae quien llama.
+
     conexion = obtener_conexion()
     cursor = conexion.cursor(dictionary=True)
 
@@ -438,6 +989,8 @@ def crear_contrato(
                 "La venta indicada no existe."
             )
 
+        precio = Decimal(str(venta["precio"]))
+
         # ------------------------------
         # 1b. EL ANTICIPO NO PUEDE PASARSE
         # ------------------------------
@@ -451,7 +1004,7 @@ def crear_contrato(
         # rechaza, así que ninguna vía que antes
         # funcionaba deja de funcionar.
 
-        if anticipo > float(venta["precio"]):
+        if anticipo > precio:
 
             conexion.rollback()
 
@@ -460,6 +1013,109 @@ def crear_contrato(
                 "El anticipo no puede ser mayor que "
                 "el precio de la venta."
             )
+
+        # ------------------------------
+        # 1c. EL SALDO FINANCIADO, AHORA
+        # QUE SE SABE EL PRECIO
+        # ------------------------------
+        # El saldo sale del precio de la VENTA, no
+        # del de lista, y no del usuario: si no se
+        # dice, es la resta, que es lo que se firma
+        # el 99 % de las veces. Si se dice, se usa el
+        # que se dice, porque hay financieras que
+        # financian el precio de lista y el cliente
+        # pone la diferencia.
+        #
+        # Y "Contado" NO financia nada. Ya se ha
+        # comprobado arriba que no lleva anticipo ni
+        # cuotas, así que el saldo es cero por
+        # definición. Sin esta línea, una venta de
+        # contado a 10.000 salía con saldo
+        # financiado de 10.000 y el mensaje de que
+        # faltaban las cuotas: el sistema decía que
+        # estaba financiando un pago que ya se
+        # había hecho entero.
+
+        if saldo_financiado is None:
+
+            saldo_financiado = (
+                Decimal("0.00")
+                if forma_pago == "Contado"
+                else (
+                    precio
+                    - anticipo
+                    - ajustes["gastos_administrativos"]
+                )
+            )
+
+        if saldo_financiado < 0:
+
+            conexion.rollback()
+
+            return (
+                None,
+                "El saldo financiado no puede ser "
+                "negativo: el precio menos la "
+                "entrega inicial y los gastos "
+                "no da negativo."
+            )
+
+        if saldo_financiado == 0 and (
+            cantidad_cuotas > 0
+        ):
+
+            conexion.rollback()
+
+            return (
+                None,
+                "No hay nada que financiar: el "
+                "saldo es cero y no se pueden "
+                "generar cuotas."
+            )
+
+        if saldo_financiado > 0 and (
+            cantidad_cuotas < 1
+        ):
+
+            conexion.rollback()
+
+            return (
+                None,
+                "Si queda saldo por financiar, "
+                "hay que decir en cuántas cuotas "
+                "se paga."
+            )
+
+        # ------------------------------
+        # 1d. EL DÍA DE VENCIMIENTO
+        # ------------------------------
+        # Se guarda aparte porque el cronograma
+        # avanza por meses de calendario con un día
+        # de referencia: sin el, cada cuota caería
+        # el día del mes en que se generó, y un
+        # crédito firmado el día 31 se movería al
+        # 28 para siempre.
+
+        dia_vencimiento = None
+
+        if primer_vencimiento:
+
+            dia_vencimiento = int(primer_vencimiento.day)
+
+        # ------------------------------
+        # 1e. LA MONEDA
+        # ------------------------------
+        # Si no se dice, la que hay configurada. El
+        # importe y la moneda van juntos: un contrato
+        # en dólares con el símbolo de pesos puesto al
+        # día siguiente es un documento que no se
+        # puede defender.
+
+        if moneda is None:
+
+            from utils.moneda import config_actual
+
+            moneda = config_actual()["codigo"]
 
         # ------------------------------
         # 2. NO HABER CONTRATO VIVO
@@ -491,13 +1147,100 @@ def crear_contrato(
         # ------------------------------
         # 3. REHACER UNO CANCELADO
         # ------------------------------
+        # Las cuotas y los pagos cuelgan del
+        # contrato. Un contrato cancelado con dinero
+        # cobrado no se puede borrar sin más: primero
+        # hay que deshacer los pagos, que es una
+        # operación aparte y con su rastro. Si quedara
+        # alguno, el DELETE de abajo reventaría con la
+        # clave foránea y el motivo sería un error
+        # de MySQL en vez de una explicación.
 
-        if existente:
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS pagos_vigentes
+            FROM pagos
+            WHERE venta_id = %s
+              AND estado = 'convalidado'
+            """,
+            (venta_id,)
+        )
+
+        if cursor.fetchone()["pagos_vigentes"]:
+
+            conexion.rollback()
+
+            return (
+                None,
+                "La venta tiene pagos registrados. "
+                "Para rehacer el contrato hay que "
+                "anularlos antes: no se puede borrar "
+                "un cobro del historial."
+            )
+
+        cursor.execute(
+            """
+            SELECT id
+            FROM contratos
+            WHERE venta_id = %s
+              AND estado = 'cancelado'
+            """,
+            (venta_id,)
+        )
+
+        para_borrar = cursor.fetchall()
+
+        for fila in para_borrar:
 
             cursor.execute(
-                "DELETE FROM contratos "
-                "WHERE venta_id = %s AND estado = 'cancelado'",
-                (venta_id,)
+                "DELETE FROM cuotas WHERE contrato_id = %s",
+                (fila["id"],)
+            )
+
+            cursor.execute(
+                "DELETE FROM garantias WHERE contrato_id = %s",
+                (fila["id"],)
+            )
+
+            cursor.execute(
+                "DELETE FROM convenios WHERE contrato_id = %s",
+                (fila["id"],)
+            )
+
+            cursor.execute(
+                "DELETE FROM contratos WHERE id = %s",
+                (fila["id"],)
+            )
+
+        # ------------------------------
+        # 3b. EL VEHÍCULO, DE FOTOGRAFÍA
+        # ------------------------------
+
+        cursor.execute(
+            """
+            SELECT
+                marcas.nombre AS marca,
+                autos.modelo,
+                autos.anio,
+                autos.color,
+                autos.precio
+            FROM autos
+            INNER JOIN marcas
+                ON autos.marca_id = marcas.id
+            WHERE autos.id = %s
+            """,
+            (venta["auto_id"],)
+        )
+
+        auto = cursor.fetchone()
+
+        if not auto:
+
+            conexion.rollback()
+
+            return (
+                None,
+                "El vehículo de la venta no existe."
             )
 
         # ------------------------------
@@ -525,11 +1268,29 @@ def crear_contrato(
                 anticipo,
                 cantidad_cuotas,
                 observaciones,
-                estado
+                estado,
+                saldo_financiado,
+                tasa_interes,
+                gastos_administrativos,
+                periodicidad,
+                primer_vencimiento,
+                dia_vencimiento,
+                moneda,
+                retencion,
+                retencion_monto,
+                fecha_financiacion,
+                clausulas,
+                marca,
+                modelo,
+                anio,
+                color,
+                precio_lista
             )
             VALUES (
                 NULL,
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s, %s, %s
             )
         """
 
@@ -539,12 +1300,31 @@ def crear_contrato(
             venta["auto_id"],
             usuario.id_usuario,
             venta["fecha"],
-            venta["precio"],
+            precio,
             forma_pago,
             anticipo,
             cantidad_cuotas,
             observaciones,
-            estado
+            estado,
+            saldo_financiado,
+            ajustes["tasa_interes"],
+            ajustes["gastos_administrativos"],
+            ajustes["periodicidad"],
+            primer_vencimiento,
+            dia_vencimiento,
+            moneda,
+            ajustes["retencion"],
+            ajustes["retencion_monto"],
+            fecha_financiacion or (
+                venta["fecha"] if saldo_financiado > 0
+                else None
+            ),
+            clausulas,
+            auto["marca"],
+            auto["modelo"],
+            auto["anio"],
+            auto["color"],
+            auto["precio"]
         )
 
         cursor.execute(consulta_insertar, valores)
@@ -555,7 +1335,9 @@ def crear_contrato(
         # 5. NÚMERO
         # ------------------------------
 
-        numero = formatear_numero(id_contrato)
+        numero = formatear_numero(
+            id_contrato, venta["fecha"].year
+        )
 
         cursor.execute(
             "UPDATE contratos SET numero = %s WHERE id = %s",
@@ -566,6 +1348,42 @@ def crear_contrato(
 
         cursor.close()
         conexion.close()
+
+        # ------------------------------
+        # 6. RASTRO
+        # ------------------------------
+        # Con el valor anterior y el nuevo de lo que
+        # se pacta. Un contrato firmado sin rastro de
+        # sus condiciones económicas no se puede
+        # defender después.
+
+        if saldo_financiado > 0:
+
+            registrar_cambio(
+                "financiera",
+                "FINANCIACION",
+                f"Contrato {numero} firmado con "
+                f"financiación de {formato_dinero(saldo_financiado)}"
+                + (
+                    f" en {cantidad_cuotas} cuotas "
+                    f"{ajustes['periodicidad']}es desde "
+                    f"{primer_vencimiento}"
+                    if primer_vencimiento
+                    else ""
+                )
+                + (
+                    f" al {formato_decimal(ajustes['tasa_interes'])} % "
+                    "de interés anual"
+                    if ajustes["tasa_interes"]
+                    else " sin interés"
+                ),
+                valor_anterior="pago de contado",
+                valor_nuevo=(
+                    f"saldo financiado "
+                    f"{formato_dinero(saldo_financiado)}"
+                ),
+                referencia=numero
+            )
 
         registrar_accion(
             "contratos",

@@ -280,8 +280,17 @@ def obtener_tablas():
         SELECT 'configuracion', COUNT(*)
         FROM configuracion
         UNION ALL
+        SELECT 'convenios', COUNT(*)
+        FROM convenios
+        UNION ALL
         SELECT 'contratos', COUNT(*)
         FROM contratos
+        UNION ALL
+        SELECT 'cuotas', COUNT(*)
+        FROM cuotas
+        UNION ALL
+        SELECT 'garantias', COUNT(*)
+        FROM garantias
         UNION ALL
         SELECT 'marcas', COUNT(*) FROM marcas
         UNION ALL

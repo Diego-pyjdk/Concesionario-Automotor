@@ -36,10 +36,7 @@ from permisos import (
     GESTIONAR_VENTAS
 )
 
-from utils.moneda import (
-    formato_dinero,
-    formatear_numero
-)
+from utils.moneda import formato_dinero
 
 from utils.helpers import (
     celda,
