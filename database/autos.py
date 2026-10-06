@@ -1,3 +1,4 @@
+from errores import ErrorValidacion
 from database.conexion import (
     conexiones_libres,
     obtener_conexion
@@ -98,6 +99,15 @@ def actualizar_auto(
 
     conexion = obtener_conexion()
     cursor = conexion.cursor()
+
+    conexion.start_transaction()
+    cursor.execute('SELECT id FROM autos WHERE id=%s FOR UPDATE', (id_auto,))
+    cursor.fetchone()
+    cursor.execute("""SELECT COUNT(*) FROM unidades_vehiculo u
+        LEFT JOIN venta_unidades vu ON vu.unidad_id=u.id
+        WHERE u.auto_id=%s AND vu.venta_id IS NULL""", (id_auto,))
+    if stock < cursor.fetchone()[0]:
+        raise ErrorValidacion('El stock no puede ser menor que las unidades identificadas sin vender.')
 
     consulta = """
         UPDATE autos

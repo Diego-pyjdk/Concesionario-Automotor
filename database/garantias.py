@@ -56,6 +56,8 @@ from database.conexion import (
 
 from errores import ErrorBaseDatos
 
+from utils.moneda import formato_dinero
+
 from permisos import (
     requiere_permiso,
     VER_CONTRATOS,
@@ -705,7 +707,7 @@ def cambiar_estado_garantia(
                     False,
                     f"No se puede liberar la garantía: el "
                     f"contrato {garantia['contrato_numero']} "
-                    f"tiene {float(saldo):,.2f} pendientes."
+                    f"tiene {formato_dinero(float(saldo))} pendientes."
                 )
 
         # ------------------------------

@@ -1,3 +1,4 @@
+from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -44,7 +45,8 @@ class ClienteForm(QDialog):
         else:
             self.setWindowTitle("Nuevo cliente")
 
-        self.setFixedWidth(450)
+        self.resize(450, 480)
+        self.setMinimumWidth(360)
 
         self.crear_interfaz()
 
@@ -82,6 +84,11 @@ class ClienteForm(QDialog):
         formulario.addRow("Documento:", self.campo_documento)
 
         layout_principal.addLayout(formulario)
+        self.error_campos = QLabel('')
+        self.error_campos.setObjectName('aviso_error')
+        self.error_campos.setWordWrap(True)
+        self.error_campos.hide()
+        layout_principal.addWidget(self.error_campos)
 
         botones = QHBoxLayout()
 
@@ -154,6 +161,7 @@ class ClienteForm(QDialog):
             self.campo_documento.setText(str(documento))
 
     def guardar(self):
+        self.error_campos.hide()
 
         nombre = self.campo_nombre.text().strip()
 
@@ -177,11 +185,9 @@ class ClienteForm(QDialog):
         ])
 
         if error:
-            QMessageBox.warning(
-                self,
-                "Dato inválido",
-                error
-            )
+            self.error_campos.setText(error)
+            self.error_campos.show()
+            self.campo_nombre.setFocus()
 
             return
 

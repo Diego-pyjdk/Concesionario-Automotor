@@ -46,6 +46,7 @@ from utils.helpers import (
     crear_boton_principal,
     crear_boton_secundario,
     conectar_enter_guardar,
+    configurar_campo_monetario,
     avisar_error
 )
 
@@ -92,13 +93,13 @@ class PagoForm(QDialog):
 
         self.campo_importe = QDoubleSpinBox()
 
-        self.campo_importe.setRange(
-            0.01, 999999999.0
+        # Minimo 0.01 y no 0: un pago de cero no es un
+        # pago. El tope sale de la moneda.
+
+        configurar_campo_monetario(
+            self.campo_importe,
+            minimo=0.01
         )
-
-        self.campo_importe.setDecimals(2)
-
-        self.campo_importe.setSingleStep(100)
 
         self.campo_importe.setValue(
             min(self.saldo, 100.0) if self.saldo > 0

@@ -597,6 +597,14 @@ def obtener_contrato(id_contrato):
 
     contrato = cursor.fetchone()
 
+    if contrato:
+        cursor.execute("""SELECT u.vin,u.matricula FROM venta_unidades vu
+            JOIN unidades_vehiculo u ON u.id=vu.unidad_id WHERE vu.venta_id=%s""",
+            (contrato['venta_id'],))
+        unidad = cursor.fetchone()
+        contrato['vin'] = unidad['vin'] if unidad else None
+        contrato['matricula'] = unidad['matricula'] if unidad else None
+
     cursor.close()
     conexion.close()
 

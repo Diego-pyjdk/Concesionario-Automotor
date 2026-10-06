@@ -136,7 +136,7 @@ CENTENAS = {
 # EL IMPORTE EN LETRAS
 # ==========================================
 
-def en_letras(valor):
+def en_letras(valor, decimales=2):
     """
     El importe escrito, para el recibo.
 
@@ -159,6 +159,22 @@ def en_letras(valor):
     de ahí el recibo lleva el número y una nota:
     escribirlo entero en letras taparía media hoja.
 
+    ------------------------------
+    # `decimales`
+    # ------------------------------
+
+    Cuántos decimales tiene la MONEDA, no el número.
+
+    En guaraníes son 0 y no hay céntimos que escribir:
+    un recibo que dijera "Gs. 1.500 con cero/100" está
+    inventando una precisión que no existe. Con 0 sale
+    "Gs. 1.500".
+
+    Por eso no se mira el número: un cobro de 1.500,50
+    en guaraníes son 1.501 enteros redondeados, y las
+    letras tienen que decir eso y no "1.500 con
+    cincuenta/100".
+
     Devuelve "" si el valor no es un número: es
     preferible un recibo sin la cantidad en letras
     que uno con "None" escrito donde va el dinero.
@@ -166,7 +182,7 @@ def en_letras(valor):
 
     try:
 
-        numero = round(float(valor), 2)
+        numero = float(valor)
 
     except (TypeError, ValueError):
 
@@ -175,15 +191,21 @@ def en_letras(valor):
     # ------------------------------
     # ENTEROS Y CÉNTIMOS
     # ------------------------------
+    # Se redondea a los decimales de la MONEDA, no a
+    # dos fijos: en guaraníes el medio no se puede
+    # pagar porque no existe, y 1.500,50 son 1.501.
 
-    centimos = int(round(abs(numero - int(numero)) * 100))
+    factor = 10 ** int(decimales)
 
-    entero = int(abs(numero))
+    # Medio arriba y no `round()`, que empata al par:
+    # en un recibo, un medio siempre se suma. Con
+    # guaraníes esto es el redondeo al entero entero.
 
-    if centimos == 100:
+    escalado = int(abs(numero) * factor + 0.5)
 
-        entero += 1
-        centimos = 0
+    entero = escalado // factor
+
+    centimos = escalado - entero * factor
 
     negativo = numero < 0
 
@@ -431,7 +453,8 @@ def texto(valor, estilo):
     )
 
 
-def bloque_cabecera(pago, contrato, estilos):
+def bloque_cabecera(pago, contrato, estilos,
+                   moneda=None):
     """
     Qué se cobró, de quién y a qué cuenta.
     """
@@ -507,30 +530,54 @@ def bloque_cabecera(pago, contrato, estilos):
     return tabla
 
 
-def bloque_importe(pago, estilos):
+def bloque_importe(pago, estilos, moneda=None):
     """
     El importe, en grande y en letras.
+
+    ------------------------------
+    # LA MONEDA DEL CONTRATO
+    # ------------------------------
+
+    Un recibo de un cobro en dólares sale en dólares
+    aunque hoy la aplicación esté en guaraníes: el
+    importe y las letras van con la del contrato.
+
+    Y las letras respetan sus decimales: en guaraníes
+    no hay céntimos que escribir, así que no sale un
+    "con 56/100" que no existe.
     """
+
+    ajustes = _moneda.config_de(moneda)
 
     return [
         Spacer(1, 4 * mm),
         texto("IMPORTE COBRADO", estilos["rotulo"]),
         texto(
-            formato_dinero(pago["importe"]),
+            formato_dinero(
+                pago["importe"], moneda=moneda
+            ),
             estilos["grande"]
         ),
         texto(
-            en_letras(pago["importe"])
-            + " " + codigo_moneda(),
+            en_letras(
+                pago["importe"],
+                ajustes["decimales"]
+            )
+            + " " + codigo_moneda(moneda),
             estilos["letras"]
         )
     ]
 
 
-def codigo_moneda():
+def codigo_moneda(moneda=None):
     """
-    El código de la moneda configurada, para las
-    letras.
+    El código de la moneda, para las letras.
+
+    Sin argumento, la que hay configurada ahora. Con
+    argumento, la del contrato: el recibo de un cobro
+    en dólares no puede llevar "PYG" detrás del
+    importe porque el concesionario haya cambiado de
+    moneda mientras tanto.
 
     Y en MAYÚSCULAS, porque es un código. En
     minúsculas, "mil con cincuenta usd" parece el
@@ -538,10 +585,15 @@ def codigo_moneda():
     es justo lo que un recibo no puede parecer.
     """
 
+    if moneda:
+
+        return str(moneda).upper()
+
     return _moneda.config_actual()["codigo"] or ""
 
 
-def bloque_cuota(pago, cuota, estilos):
+def bloque_cuota(pago, cuota, estilos,
+                 moneda=None):
     """
     Qué queda de la cuota que este recibo cubre.
 
@@ -556,8 +608,18 @@ def bloque_cuota(pago, cuota, estilos):
 
     filas = [
         ["Cuota", f"{cuota['numero']}"],
-        ["Importe de la cuota", formato_dinero(cuota["importe"])],
-        ["Saldo tras este cobro", formato_dinero(cuota["saldo"])],
+        [
+            "Importe de la cuota",
+            formato_dinero(
+                cuota["importe"], moneda=moneda
+            )
+        ],
+        [
+            "Saldo tras este cobro",
+            formato_dinero(
+                cuota["saldo"], moneda=moneda
+            )
+        ],
         ["Estado de la cuota", _estado(cuota["estado"])]
     ]
 
@@ -626,7 +688,8 @@ def bloque_firma(estilos):
     return [Spacer(1, 7 * mm), linea, rotulos]
 
 
-def bloque_imputacion(pagos, cuotas, estilos):
+def bloque_imputacion(pagos, cuotas, estilos,
+                        moneda=None):
     """
     El reparto, cuando el cobro cubre varias cuotas.
 
@@ -642,6 +705,8 @@ def bloque_imputacion(pagos, cuotas, estilos):
     que es la única forma de que el papel diga lo mismo
     que el cronograma.
     """
+
+    ajustes = _moneda.config_de(moneda)
 
     total = sum(
         (Decimal(str(p["importe"])) for p in pagos),
@@ -711,9 +776,13 @@ def bloque_imputacion(pagos, cuotas, estilos):
     return [
         Spacer(1, 4 * mm),
         texto("IMPORTE COBRADO", estilos["rotulo"]),
-        texto(formato_dinero(total), estilos["grande"]),
         texto(
-            en_letras(total) + " " + codigo_moneda(),
+            formato_dinero(total, moneda=moneda),
+            estilos["grande"]
+        ),
+        texto(
+            en_letras(total, ajustes["decimales"])
+            + " " + codigo_moneda(moneda),
             estilos["letras"]
         ),
         Spacer(1, 2 * mm),
@@ -901,6 +970,15 @@ def generar_recibo(pagos, contrato, cuotas=None):
     Un cobro de una cuota es una lista de uno, y sale
     exactamente igual que antes.
 
+    ------------------------------
+    # LA MONEDA
+    # ------------------------------
+
+    La del CONTRATO, no la que haya configurada ahora:
+    el papel de un cobro tiene que decir la misma
+    moneda que el cobro. Se saca de `contrato[
+    "moneda"]`, que es donde está escrito.
+
     El recibo se guarda como
     documentos/recibos/recibo_<n>.pdf, con el número
     de recibo, y devuelve la ruta.
@@ -943,6 +1021,20 @@ def generar_recibo(pagos, contrato, cuotas=None):
         )
 
     primero = pagos[0]
+
+    # ------------------------------
+    # LA MONEDA DEL CONTRATO
+    # ------------------------------
+    # Un recibo de un cobro en dólares sale en dólares
+    # aunque hoy la aplicación esté en guaraníes. El
+    # papel que el cliente se lleva dice lo mismo que
+    # el cobro, y no lo que se haya configurado después.
+
+    # Se lee del contrato y no del pago: el pago no
+    # tiene columna de moneda, y el contrato sí, y es
+    # donde está escrito.
+
+    moneda = contrato.get("moneda")
 
     estilos = construir_estilos()
 
@@ -1002,7 +1094,10 @@ def generar_recibo(pagos, contrato, cuotas=None):
     historia = [
         texto("RECIBO DE PAGO", estilos["recibo"]),
         Spacer(1, 4 * mm),
-        bloque_cabecera(primero, contrato, estilos)
+        bloque_cabecera(
+            primero, contrato, estilos,
+            moneda=moneda
+        )
     ]
 
     if len(pagos) > 1:
@@ -1017,17 +1112,21 @@ def generar_recibo(pagos, contrato, cuotas=None):
         # cuales 10.000 son de marzo".
 
         historia += bloque_imputacion(
-            pagos, cuotas, estilos
+            pagos, cuotas, estilos,
+            moneda=moneda
         )
 
     else:
 
-        historia += bloque_importe(primero, estilos)
+        historia += bloque_importe(
+            primero, estilos, moneda=moneda
+        )
 
         if cuotas:
 
             historia += bloque_cuota(
-                primero, cuotas[0], estilos
+                primero, cuotas[0], estilos,
+                moneda=moneda
             )
 
     historia += bloque_firma(estilos)

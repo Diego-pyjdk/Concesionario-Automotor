@@ -300,6 +300,11 @@ def obtener_tablas():
         SELECT 'usuarios', COUNT(*) FROM usuarios
         UNION ALL
         SELECT 'ventas', COUNT(*) FROM ventas
+        UNION ALL SELECT 'auto_fichas', COUNT(*) FROM auto_fichas
+        UNION ALL SELECT 'auto_fotos', COUNT(*) FROM auto_fotos
+        UNION ALL SELECT 'unidades_vehiculo', COUNT(*) FROM unidades_vehiculo
+        UNION ALL SELECT 'venta_unidades', COUNT(*) FROM venta_unidades
+        UNION ALL SELECT 'seguimiento_cobranza', COUNT(*) FROM seguimiento_cobranza
     """
 
     cursor.execute(conteos)

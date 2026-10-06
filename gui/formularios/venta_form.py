@@ -1,3 +1,4 @@
+from database.fichas import unidades_auto
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -40,12 +41,12 @@ from utils.validaciones import (
     primer_error
 )
 
-from utils.moneda import prefijo_moneda
 
 from utils.helpers import (
+    avisar_error,
+    configurar_campo_monetario,
     crear_boton_principal,
     crear_boton_secundario,
-    avisar_error
 )
 
 
@@ -91,7 +92,8 @@ class VentaForm(QDialog):
 
         self.setWindowTitle("Nueva venta")
 
-        self.setFixedWidth(480)
+        self.resize(480, 480)
+        self.setMinimumWidth(360)
 
         self.crear_interfaz()
         self.cargar_listas()
@@ -121,19 +123,18 @@ class VentaForm(QDialog):
 
         self.campo_precio = QDoubleSpinBox()
 
-        self.campo_precio.setRange(0, 999999999)
+        # Rango, decimales, separador y prefijo salen
+        # de la moneda configurada. Con guaranies el
+        # prefijo tiene que ser "Gs. " y no "$ ".
 
-        self.campo_precio.setDecimals(2)
-
-        # El prefijo sale de la moneda configurada: con
-        # euros tiene que poner "EUR " y no "$ ".
-
-        self.campo_precio.setPrefix(
-            prefijo_moneda()
+        configurar_campo_monetario(
+            self.campo_precio
         )
 
         formulario.addRow("Cliente:", self.combo_cliente)
         formulario.addRow("Vehículo:", self.combo_auto)
+        self.combo_unidad = QComboBox()
+        formulario.addRow("Unidad / chasis:", self.combo_unidad)
         formulario.addRow("Fecha:", self.campo_fecha)
         formulario.addRow("Precio:", self.campo_precio)
 
@@ -246,6 +247,22 @@ class VentaForm(QDialog):
         )
 
         self.actualizar_stock()
+        self.actualizar_unidades()
+
+    def actualizar_unidades(self):
+        self.combo_unidad.clear()
+        datos = self.combo_auto.currentData()
+        if not datos:
+            return
+        unidades = unidades_auto(datos[0])
+        sin_vender = [u for u in unidades if not u['venta_id']]
+        if datos[2] > len(sin_vender):
+            self.combo_unidad.addItem('Stock sin individualizar', None)
+        for unidad in sin_vender:
+            if unidad['estado'] == 'disponible':
+                self.combo_unidad.addItem(f"{unidad['vin']} · {unidad['matricula'] or 'Sin matrícula'}", unidad['id'])
+        if self.combo_unidad.count() == 0:
+            self.combo_unidad.addItem('Sin unidades disponibles', -1)
 
     def actualizar_stock(self):
 
@@ -305,6 +322,10 @@ class VentaForm(QDialog):
 
             return
 
+        if self.combo_unidad.currentData() == -1:
+            QMessageBox.warning(self, 'Sin disponibilidad', 'Las unidades están reservadas o en taller.')
+            return
+
         error = primer_error([
             es_precio(
                 self.campo_precio.value(),
@@ -338,7 +359,8 @@ class VentaForm(QDialog):
                 cliente_id,
                 datos_auto[0],
                 fecha,
-                self.campo_precio.value()
+                self.campo_precio.value(),
+                unidad_id=self.combo_unidad.currentData()
             )
 
         except ErrorSistema as error:

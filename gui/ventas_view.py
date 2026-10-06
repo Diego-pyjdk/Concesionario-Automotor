@@ -1,5 +1,6 @@
 from database.ventas import (
     obtener_ventas,
+    moneda_de_venta,
     eliminar_venta as eliminar_venta_db
 )
 
@@ -286,7 +287,26 @@ class VentasView(VistaListado):
         DetalleVentaDialog(
             self,
             venta,
-            saldo_venta
+            saldo_venta,
+            # La moneda con la que se registró ESTA
+            # venta.
+            #
+            # Va aparte porque `obtener_ventas()` tiene
+            # un contrato de SEIS columnas que se lee por
+            # posición en tres sitios (`pintar_fila`,
+            # `ver_venta` y el ancho de columna). Añadir
+            # una séptima no rompe los datos: rompe el
+            # pintado de la tabla, y el fallo sale al
+            # abrir la sección.
+            #
+            # Y hace falta: el detalle tiene que enseñar
+            # el precio en la moneda con la que se
+            # registró esa venta, no en la que haya
+            # ahora. Un importe no se convierte por
+            # cambiar un ajuste.
+            moneda=self.proteger(
+                moneda_de_venta, id_venta
+            )
         ).exec()
 
     # =============================

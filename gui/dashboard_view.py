@@ -1,3 +1,9 @@
+from gui.iconos import icono as icono_vector
+from database.fichas import resumen_inicio
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QPushButton, QScrollArea, QWidget, QGridLayout
+from permisos import tiene_permiso, REGISTRAR_VENTAS, VER_FINANCIERA
+from utils.helpers import crear_boton_principal, crear_boton_secundario
 # ==========================================
 # PANEL PRINCIPAL
 # ==========================================
@@ -50,13 +56,15 @@ from gui.vista_base import VistaBase
 
 
 class DashboardView(VistaBase):
+    navegar_a = Signal(str)
 
     def __init__(self):
         super().__init__()
 
         self.crear_interfaz()
 
-        self.cargar_datos()
+        if not self.carga_asincrona:
+            self.cargar_datos()
 
     # =============================
     # INTERFAZ
@@ -69,7 +77,16 @@ class DashboardView(VistaBase):
         layout.setContentsMargins(30, 25, 30, 25)
         layout.setSpacing(18)
 
-        self.setLayout(layout)
+        cuerpo = QWidget()
+        cuerpo.setLayout(layout)
+        cuerpo.setMinimumWidth(640)
+        area = QScrollArea()
+        area.setFrameShape(QFrame.NoFrame)
+        area.setWidgetResizable(True)
+        area.setWidget(cuerpo)
+        exterior = QVBoxLayout(self)
+        exterior.setContentsMargins(0,0,0,0)
+        exterior.addWidget(area)
 
         layout.addWidget(
             crear_titulo("Panel principal")
@@ -89,7 +106,21 @@ class DashboardView(VistaBase):
         # CIFRAS PRINCIPALES
         # ------------------------------
 
-        tarjetas = QHBoxLayout()
+        accesos = QHBoxLayout()
+        if tiene_permiso(REGISTRAR_VENTAS):
+            accesos.addWidget(crear_boton_principal('Registrar venta',lambda: self.navegar_a.emit('Nueva venta')))
+        accesos.addWidget(crear_boton_secundario('Consultar vehículos',lambda: self.navegar_a.emit('Vehículos')))
+        if tiene_permiso(VER_FINANCIERA):
+            accesos.addWidget(crear_boton_secundario('Cobranza y vencimientos',lambda: self.navegar_a.emit('Cartera')))
+        accesos.addStretch()
+        layout.addLayout(accesos)
+        self.resumen_financiero = QLabel('')
+        self.resumen_financiero.setObjectName('aviso')
+        self.resumen_financiero.setWordWrap(True)
+        self.resumen_financiero.setVisible(tiene_permiso(VER_FINANCIERA))
+        layout.addWidget(self.resumen_financiero)
+        tarjetas = QGridLayout()
+        self.layout_tarjetas = tarjetas
         tarjetas.setSpacing(15)
 
         self.tarjeta_autos = self.crear_tarjeta(
@@ -108,10 +139,10 @@ class DashboardView(VistaBase):
             "🏷", "Marcas"
         )
 
-        tarjetas.addWidget(self.tarjeta_autos)
-        tarjetas.addWidget(self.tarjeta_clientes)
-        tarjetas.addWidget(self.tarjeta_ventas)
-        tarjetas.addWidget(self.tarjeta_marcas)
+        tarjetas.addWidget(self.tarjeta_autos, 0, 0)
+        tarjetas.addWidget(self.tarjeta_clientes, 0, 1)
+        tarjetas.addWidget(self.tarjeta_ventas, 1, 0)
+        tarjetas.addWidget(self.tarjeta_marcas, 1, 1)
 
         layout.addLayout(tarjetas)
 
@@ -119,7 +150,8 @@ class DashboardView(VistaBase):
         # CIFRAS DEL PERÍODO
         # ------------------------------
 
-        tiles = QHBoxLayout()
+        tiles = QGridLayout()
+        self.layout_tiles = tiles
         tiles.setSpacing(15)
 
         self.tile_hoy = self.crear_tile("Ventas de hoy")
@@ -127,10 +159,10 @@ class DashboardView(VistaBase):
         self.tile_total = self.crear_tile("Total vendido")
         self.tile_stock = self.crear_tile("Stock bajo")
 
-        tiles.addWidget(self.tile_hoy)
-        tiles.addWidget(self.tile_mes)
-        tiles.addWidget(self.tile_total)
-        tiles.addWidget(self.tile_stock)
+        tiles.addWidget(self.tile_hoy, 0, 0)
+        tiles.addWidget(self.tile_mes, 0, 1)
+        tiles.addWidget(self.tile_total, 1, 0)
+        tiles.addWidget(self.tile_stock, 1, 1)
 
         layout.addLayout(tiles)
 
@@ -138,24 +170,24 @@ class DashboardView(VistaBase):
         # TABLAS
         # ------------------------------
 
-        paneles = QHBoxLayout()
+        paneles = QGridLayout()
         paneles.setSpacing(15)
 
         self.panel_ventas = self.crear_panel(
-            "🧾  Últimas ventas",
+            "Últimas ventas",
             ["Fecha", "Cliente", "Vehículo", "Precio"],
             vacio="Sin ventas registradas"
         )
 
         self.panel_top = self.crear_panel(
-            "🏆  Vehículos más vendidos",
+            "Vehículos más vendidos",
             ["Vehículo", "Unidades", "Importe"],
             anchos_fijos={1: 80},
             vacio="Sin ventas registradas"
         )
 
         self.panel_clientes = self.crear_panel(
-            "👥  Clientes con más compras",
+            "Clientes con más compras",
             ["Cliente", "Compras", "Importe"],
             anchos_fijos={1: 80},
             vacio="Sin compras registradas"
@@ -167,9 +199,9 @@ class DashboardView(VistaBase):
         # Vehículo quedaban con unos pocos píxeles y
         # mostraban solo puntos suspensivos.
 
-        paneles.addWidget(self.panel_ventas, 4)
-        paneles.addWidget(self.panel_top, 3)
-        paneles.addWidget(self.panel_clientes, 3)
+        paneles.addWidget(self.panel_ventas, 0, 0, 1, 2)
+        paneles.addWidget(self.panel_top, 1, 0)
+        paneles.addWidget(self.panel_clientes, 1, 1)
 
         layout.addLayout(paneles)
 
@@ -183,6 +215,22 @@ class DashboardView(VistaBase):
 
         layout.addWidget(self.etiqueta_pie)
 
+    def resizeEvent(self, evento):
+        super().resizeEvent(evento)
+        if not hasattr(self,'layout_tiles'):
+            return
+        columnas = 4 if self.width() >= 1100 else 2
+        if getattr(self,'columnas_panel', None) == columnas:
+            return
+        self.columnas_panel = columnas
+        grupos = [(self.layout_tarjetas,[self.tarjeta_autos,self.tarjeta_clientes,self.tarjeta_ventas,self.tarjeta_marcas]),
+                  (self.layout_tiles,[self.tile_hoy,self.tile_mes,self.tile_total,self.tile_stock])]
+        for layout, tarjetas in grupos:
+            for tarjeta in tarjetas:
+                layout.removeWidget(tarjeta)
+            for indice, tarjeta in enumerate(tarjetas):
+                layout.addWidget(tarjeta, indice // columnas, indice % columnas)
+
     def crear_tarjeta(self, icono, nombre):
 
         tarjeta = QFrame()
@@ -194,7 +242,8 @@ class DashboardView(VistaBase):
 
         tarjeta.setLayout(lay)
 
-        etiqueta_icono = QLabel(icono)
+        etiqueta_icono = QLabel()
+        etiqueta_icono.setPixmap(icono_vector(nombre, '#2563eb').pixmap(26,26))
         etiqueta_icono.setObjectName("icono")
 
         etiqueta_nombre = QLabel(nombre)
@@ -294,12 +343,27 @@ class DashboardView(VistaBase):
         para el mismo dato.
         """
 
+        if self.carga_asincrona and self.cache_consultas is None:
+            self.etiqueta_pie.setText('Actualizando panel…')
+            consultas = [(obtener_resumen, (), {}), (obtener_ventas_del_dia, (), {}),
+                (obtener_ventas_del_mes, (), {}), (obtener_stock_minimo, (), {}),
+                (obtener_ventas_recientes, (6,), {}), (obtener_top_vehiculos, (6,), {}),
+                (obtener_ventas_por_cliente, (6,), {}), (obtener_ultima_venta, (), {})]
+            if tiene_permiso(VER_FINANCIERA):
+                consultas.append((resumen_inicio, (), {}))
+            self.consultar_lote(consultas, self.cargar_datos)
+            return
         resumen = self.proteger(obtener_resumen)
 
         self.cargar_tarjetas(resumen)
         self.cargar_tiles(resumen)
         self.cargar_tablas()
         self.cargar_pie()
+        if tiene_permiso(VER_FINANCIERA):
+            resumen = self.proteger(resumen_inicio)
+            if resumen is not None:
+                textos = [f"{codigo}: por cobrar {formato_dinero(grupo['saldo'],moneda=codigo)} · vencido {formato_dinero(grupo['vencido'],moneda=codigo)} · {grupo['contratos']} contratos" for codigo,grupo in resumen.items()]
+                self.resumen_financiero.setText('\n'.join(textos) if textos else 'Sin contratos con saldo pendiente.')
 
     def cargar_tarjetas(self, resumen):
 

@@ -55,15 +55,15 @@ from errores import ErrorValidacion, PermisoDenegado
 from utils.helpers import (
     ajustar_alto_tabla,
     celda,
+    conectar_enter_guardar,
+    configurar_campo_monetario,
     crear_boton_principal,
     crear_boton_secundario,
     crear_tabla,
-    conectar_enter_guardar
 )
 
 from utils.moneda import (
     formato_dinero,
-    prefijo_moneda
 )
 
 from utils.registro import registrar_error_inesperado
@@ -143,13 +143,15 @@ class PagoAdelantadoForm(QDialog):
 
         self.campo_importe = QDoubleSpinBox()
 
-        self.campo_importe.setRange(0, 999999999)
+        # Rango, decimales, separador y prefijo salen de
+        # la moneda configurada. En guaranies el paso de
+        # la flechita tiene que ser de 100.000: con un
+        # salto de 100 habia que pulsarla cientos de
+        # veces para llegar al siguiente millon.
 
-        self.campo_importe.setDecimals(2)
-
-        self.campo_importe.setGroupSeparatorShown(False)
-
-        self.campo_importe.setPrefix(prefijo_moneda())
+        configurar_campo_monetario(
+            self.campo_importe
+        )
 
         formulario.addRow(
             "Importe recibido:", self.campo_importe

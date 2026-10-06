@@ -106,6 +106,8 @@ from errores import (
     ErrorValidacion
 )
 
+from utils.moneda import formato_dinero
+
 import sesion as modulo_sesion
 
 from permisos import (
@@ -829,7 +831,7 @@ def generar_cronograma(id_contrato):
         "CRONOGRAMA",
         f"Cronograma de {total} cuotas generado para "
         f"el contrato {numero}, cuota de "
-        f"{float(monto):,.2f}"
+        f"{formato_dinero(monto)}"
     )
 
     return (total, "")
@@ -1221,7 +1223,7 @@ def registrar_pago_cuota(
         return (
             None,
             f"El importe es mayor que el saldo de la "
-            f"cuota ({float(saldo_cuota):,.2f})."
+            f"cuota ({formato_dinero(float(saldo_cuota))})."
         )
 
     # ------------------------------
@@ -1407,13 +1409,13 @@ def registrar_pago_cuota(
         "PAGO_CUOTA",
         f"Cuota {cuota['numero']} del contrato "
         f"{cuota['contrato_id']}: "
-        f"{float(importe):,.2f} por {forma}",
+        f"{formato_dinero(float(importe))} por {forma}",
         valor_anterior=(
-            f"saldo {float(saldo_actual):,.2f} "
+            f"saldo {formato_dinero(float(saldo_actual))} "
             f"[{ESTADOS.get(estado_anterior, estado_anterior)}]"
         ),
         valor_nuevo=(
-            f"saldo {float(saldo_nuevo):,.2f} "
+            f"saldo {formato_dinero(float(saldo_nuevo))} "
             f"[{ESTADOS.get(nuevo_estado, nuevo_estado)}]"
         ),
         referencia=recibo
@@ -1625,7 +1627,7 @@ def anular_pago_interno(id_pago, motivo):
     registrar_accion(
         "financiera",
         "PAGO_ANULADO",
-        f"Pago de {float(pago['importe']):,.2f} "
+        f"Pago de {formato_dinero(float(pago['importe']))} "
         f"anulado automáticamente: {motivo}"
     )
 
@@ -2082,7 +2084,7 @@ def registrar_pago_adelantado(
                     None,
                     f"El importe es mayor que el saldo "
                     f"de la venta. Quedan "
-                    f"{float(saldo_venta):,.2f} por cobrar."
+                    f"{formato_dinero(float(saldo_venta))} por cobrar."
                 )
 
         # ------------------------------
@@ -2109,7 +2111,7 @@ def registrar_pago_adelantado(
                 None,
                 f"El importe no cabe en las cuotas "
                 f"pendientes: sobran "
-                f"{float(sobrante):,.2f}.\n\n"
+                f"{formato_dinero(float(sobrante))}.\n\n"
                 "Un cobro adelantado se imputa a cuotas "
                 "completas, de la más antigua a la más "
                 "reciente. Si el cliente entrega de más, "
@@ -2275,18 +2277,19 @@ def registrar_pago_adelantado(
         registrar_cambio(
             "financiera",
             "PAGO_ADELANTADO",
-            "Cobro adelantado de "
-            f"{float(total):,.2f} que cubre "
+            f"Cobro adelantado de "
+            f"{formato_dinero(total)} que cubre "
             f"{len(plan)} cuota(s) del contrato "
             f"{contrato['numero']}: "
             + ", ".join(str(p["numero"]) for p in plan)
             + f" por {forma}",
             valor_anterior=(
-                f"saldo pendiente {float(saldo_total_antes):,.2f}"
+                "saldo pendiente "
+                f"{formato_dinero(saldo_total_antes)}"
             ),
             valor_nuevo=(
-                f"saldo pendiente "
-                f"{float(saldo_total_despues):,.2f}"
+                "saldo pendiente "
+                f"{formato_dinero(saldo_total_despues)}"
             ),
             referencia=ids[0]["recibo"] if ids else recibo
         )
@@ -2448,8 +2451,8 @@ def anular_pago(id_pago, motivo):
 
         texto_cuota = (
             f" Cuota {pago['cuota_numero']}: "
-            f"{float(saldo_cuota_antes or 0):,.2f} "
-            f"-> {float(cuota_despues['saldo']):,.2f} "
+            f"{formato_dinero(float(saldo_cuota_antes or 0))} "
+            f"-> {formato_dinero(float(cuota_despues['saldo']))} "
             f"[{ESTADOS.get(estado_cuota_antes, '?')} -> "
             f"{ESTADOS.get(cuota_despues['estado'], '?')}]"
         )
@@ -2459,21 +2462,21 @@ def anular_pago(id_pago, motivo):
     registrar_cambio(
         "financiera",
         "PAGO_ANULADO",
-        f"Pago de {float(pago['importe']):,.2f} "
+        f"Pago de {formato_dinero(float(pago['importe']))} "
         f"anulado. Motivo: {motivo.strip()}",
         valor_anterior=(
             f"convalidado"
             + (
-                f" | cuota saldo "
-                f"{float(saldo_cuota_antes or 0):,.2f}"
+                " | cuota saldo "
+                f"{formato_dinero(saldo_cuota_antes or 0)}"
                 if pago["cuota_id"] else ""
             )
         ),
         valor_nuevo=(
             f"anulado"
             + (
-                f" | cuota saldo "
-                f"{float(cuota_despues['saldo']):,.2f}"
+                " | cuota saldo "
+                f"{formato_dinero(cuota_despues['saldo'])}"
                 if cuota_despues else ""
             )
         ),

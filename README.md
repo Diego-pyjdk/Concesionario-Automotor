@@ -1,3 +1,7 @@
+# Actualización incluida
+
+Consulta `INSTRUCCIONES_ACTUALIZACION.md` antes de ejecutar SQL.
+
 # Concesionario Automotor
 
 Sistema de gestión para un concesionario de
@@ -429,54 +433,119 @@ solo deja escribir dos decimales.
 
 ### La moneda
 
-La moneda se cambia en **Configuración → Ajustes**,
-sin tocar el código y sin reiniciar. Se guarda en la
-base, así que es la misma para todo el que use el
-programa.
+Hay dos, y se elige una en **Configuración →
+Ajustes**: un desplegable, sin escribir nada.
 
-Hay cinco ajustes:
-
-| Ajuste | Por defecto | Para qué |
-|---|---|---|
-| Código | `USD` | código ISO de la moneda |
-| Símbolo | `$` | lo que se ve junto al importe |
-| Formato | `simbolo_espacio` | cómo se juntan símbolo e importe |
-| Separador de miles | `,` | `1,500.00` o `1.500,00` |
-| Separador de decimales | `.` | `1,500.00` o `1.500,00` |
-
-Los formatos admitidos, con `1234.50` como ejemplo:
-
-| Formato | Resultado |
+| Moneda | Cómo se ven los importes |
 |---|---|
-| `simbolo_espacio` | `$ 1,234.50` |
-| `simbolo_pegado` | `$1,234.50` |
-| `simbolo_despues` | `1,234.50 $` |
-| `codigo_espacio` | `USD 1,234.50` |
-| `codigo_pegado` | `USD1,234.50` |
-| `codigo_despues` | `1,234.50 USD` |
+| **Guaraní paraguayo** (PYG) | `Gs. 1.500` — sin decimales, punto de miles |
+| **Dólar estadounidense** (USD) | `$ 1,500.00` — dos decimales, coma de miles |
 
-**Para facturar en euros**: código `EUR`, símbolo
-`€`, formato `simbolo_despues` (lo normal en
-Europa), separador de miles `.` y de decimales `,`.
-Sale `1.234,50 €`.
+Ejemplos de cada una:
 
-Mientras escribes, el panel enseña cómo quedaría,
-sin guardar. El separador de miles y el de decimales
-**no pueden ser el mismo**: `1.234.56` y `1.234,56`
-se leerían igual.
+| Importe | Guaraní | Dólar |
+|---|---|---|
+| 1.500 | `Gs. 1.500` | `$ 1,500.00` |
+| 150.000 | `Gs. 150.000` | `$ 150,000.00` |
+| 1.500.000 | `Gs. 1.500.000` | `$ 1,500,000.00` |
+| 150.000.000 | `Gs. 150.000.000` | `$ 150,000,000.00` |
+| 2.500.000.000 | `Gs. 2.500.000.000` | `$ 2,500,000,000.00` |
 
-El cambio afecta a todas partes a la vez: los
-listados, el detalle de una venta, los contratos, el
-PDF y los reportes. Las tablas de los listados no
-llevan símbolo (no lo han llevado nunca), pero sí
-siguen los separadores.
+#### El guaraní no lleva decimales
 
-> Si tienes una base que ya estaba funcionando, la
-> moneda se pone por su cuenta al leer los ajustes:
-> aunque no existan esas cinco claves, la aplicación
-> usa los valores por defecto, que son exactamente
-> los de siempre. Si quieres verlas y poder
-> cambiarlas, aplica `database/migracion_moneda.sql`.
+Porque **no tiene subunitario**: no hay moneda
+fraccionaria que circule y los precios se escriben en
+números enteros. `Gs. 1.500,00` inventaría una
+precisión que no existe, y un cajero quecompare
+`Gs. 1.500,00` con `Gs. 1.500` tendría dos cifras
+distintas para lo mismo.
+
+El importe se guarda igual en la base con dos
+decimales; lo que no lleva decimales es **la forma de
+enseñarlo**. Si alguien escribe 1.500,50 en
+guaraníes, se guarda y se muestra como `Gs. 1.501`.
+
+#### El símbolo es `Gs.` y no `₲`
+
+El símbolo oficial del guaraní es `₲` (U+20B2), y no
+se usa aquí por dos razones:
+
+- Las fuentes de los PDF (Helvetica) **no lo
+  tienen**. Los contratos saldrían con un `?` donde
+  debería estar el símbolo, y un contrato con
+  interrogaciones en el importe no es un documento que
+  se pueda defender.
+- `₲` no está en `cp1252`, que es lo que hay detrás de
+  la codificación que usa reportlab. Habría que
+  incrustar una fuente entera para un signo.
+
+`Gs.` es como se escribe de todas formas en un
+documento de este país.
+
+#### Elegir UNA moneda, no cinco caracteres
+
+El desplegable elige la moneda entera: símbolo,
+formato, separadores y decimales salen de una tabla
+del programa (`utils/moneda.py`) y no se escriben a
+mano.
+
+Antes había cinco campos —un código, un símbolo y
+tres desplegables— y se podían combinar en cosas que
+**no son monedas**: guaraníes con dos decimales, o
+dólares con el punto de miles. Nada de eso daba un
+error al guardarlo: salía un importe que no se puede
+leer, y se descubría leyendo un contrato. Con el
+desplegable no se puede.
+
+Mientras eliges, el panel enseña cómo quedarían
+varios importes de verdad (un vehículo, un cobro, una
+venta grande), sin guardar nada.
+
+#### Cambiar la moneda NO convierte importes
+
+> **No hay tipo de cambio en ninguna parte del
+> programa, y no se calcula ninguno.**
+
+Cambiar el ajuste cambia **cómo se muestran** los
+importes. No toca ni un valor de ventas, contratos,
+cuotas ni pagos. Un `Gs. 25.000` que en realidad son
+25.000 dólares sería peor que un importe sin moneda:
+parece un dato y es mentira.
+
+Por eso **cada venta y cada contrato guardan la
+moneda con la que se hicieron** (`ventas.moneda` y
+`contratos.moneda`). Un contrato firmado en dólares se
+sigue enseñando y **se sigue imprimiendo en dólares**
+aunque el concesionario pase a guaraníes dentro de seis
+meses. Un documento firmado que al reimprimirse dice
+otra moneda no sirve para nada.
+
+Cuando el administrador cambia el ajuste, la
+aplicación avisa de esto en la misma pantalla.
+
+#### Los importes grandes
+
+Las columnas de dinero son `DECIMAL(15, 2)`: **13
+cifras enteras**, hasta 9.999.999.999.999,99. Antes
+eran `DECIMAL(10, 2)`, cuyo techo son 99.999.999,99, y
+en guaraníes eso no daba ni para un vehículo normal.
+
+Los campos de escritura llegan hasta ese mismo tope, y
+no lo recortan: se puede escribir 250.000.000 y se
+guarda 250.000.000. Con el tope anterior, el campo
+**recortaba el precio en silencio** y el usuario veía
+una cifra que no era la que había escrito.
+
+El paso de la flechita del campo también cambia: en
+guaraníes salta de 100.000 en 100.000, porque con un
+salto de 100 hay que pulsarla cientos de veces para
+llegar de un millón al siguiente.
+
+> Si tienes una base que ya estaba funcionando, aplica
+> `database/migracion_monedas.sql`. Amplía las columnas
+> de dinero (sin tocar ni un valor), añade
+> `ventas.moneda` y siembra la clave de los decimales.
+> Se puede aplicar dos veces sin miedo.
 
 ### Atajos de teclado
 
@@ -530,7 +599,7 @@ concesionario/
 │   ├── migracion_indices.sql   Índices y marcas únicas
 │   ├── migracion_ventas_usuario.sql  Quién registró cada venta
 │   ├── migracion_pagos.sql     Tabla de pagos
-│   ├── migracion_moneda.sql    Claves de moneda configurable
+│   ├── migracion_moneda.sql    Moneda por venta, importes grandes
 │   ├── migracion_financiera.sql    Cuotas, garantías y ajustes
 │   ├── migracion_auditoria_cambios.sql  Valor anterior y nuevo
 │   └── reportes.py             Estadísticas y agregados
@@ -839,7 +908,7 @@ en `tests/`:
 venv\Scripts\python.exe -m pytest
 ```
 
-Son 471 pruebas. **No tocan tus datos**: cada
+Son 505 pruebas. **No tocan tus datos**: cada
 sesión levanta una base temporal llamada
 `pruebas_concesionario` a partir de
 `database/esquema.sql` —es decir, una

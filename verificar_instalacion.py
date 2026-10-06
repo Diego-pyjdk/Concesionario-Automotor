@@ -326,7 +326,8 @@ def comprobar_esquema():
         "ventas", "usuarios",
         "configuracion", "auditoria",
         "contratos", "cuotas", "garantias",
-        "convenios", "pagos"
+        "convenios", "pagos", "auto_fichas", "auto_fotos", "unidades_vehiculo",
+        "venta_unidades", "seguimiento_cobranza"
     ]
 
     # Cada tabla que falte dice qué migración
@@ -346,7 +347,12 @@ def comprobar_esquema():
         "pagos": "database/migracion_pagos.sql",
         "cuotas": "database/migracion_financiera.sql",
         "garantias": "database/migracion_financiera.sql",
-        "convenios": "database/migracion_financiera.sql"
+        "convenios": "database/migracion_financiera.sql",
+        "auto_fichas": "sql/actualizar_mejoras.sql",
+        "auto_fotos": "sql/actualizar_mejoras.sql",
+        "unidades_vehiculo": "sql/actualizar_mejoras.sql",
+        "venta_unidades": "sql/actualizar_mejoras.sql",
+        "seguimiento_cobranza": "sql/actualizar_mejoras.sql"
     }
 
     cursor.execute("SHOW TABLES")
@@ -556,6 +562,8 @@ def comprobar_aplicacion():
     # hasta que alguien intenta firmar una venta.
 
     modulos = [
+        "gui.fichas_dialog", "gui.seguimiento_dialog", "gui.respaldo_dialog",
+        "gui.tema", "gui.iconos", "gui.trabajos", "database.fichas", "utils.respaldo",
         "main",
         "sesion",
         "permisos",

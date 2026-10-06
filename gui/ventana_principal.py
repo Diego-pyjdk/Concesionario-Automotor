@@ -1,3 +1,8 @@
+from gui.vista_base import VistaBase
+from gui.tema import aplicar_tema, AJUSTES
+from gui.iconos import icono
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication, QScrollArea, QSizePolicy
 from PySide6.QtWidgets import (
     QMainWindow,
     QFrame,
@@ -134,6 +139,7 @@ class VentanaPrincipal(QMainWindow):
         # que necesitan; la ventana sigue
         # siendo redimensionable.
         self.resize(1320, 780)
+        self.setMinimumSize(800, 540)
 
         self.crear_interfaz()
 
@@ -152,10 +158,14 @@ class VentanaPrincipal(QMainWindow):
 
         self.paginas = QStackedWidget()
 
+        self.sidebar = sidebar
         layout_principal.addWidget(sidebar)
         layout_principal.addWidget(self.paginas)
 
         self.construir_paginas()
+        if str(AJUSTES.value('menu_contraido','false')).lower() == 'true':
+            self.alternar_menu()
+        QTimer.singleShot(0, lambda: self.navegar(0))
 
     # ==========================================
     # PÁGINAS
@@ -168,20 +178,35 @@ class VentanaPrincipal(QMainWindow):
         """
 
         self.botones_menu = []
+        self.definiciones = []
+        self.paginas_creadas = set()
+        self.vistas = {}
+        self.grupos_menu = []
+        grupo_anterior = None
 
         for texto, vista, permiso in self.SECCIONES:
 
             if not tiene_permiso(permiso):
                 continue
 
-            pagina = self.crear_vista(
-                vista,
-                texto
-            )
+            nombre = texto.split('  ', 1)[-1]
+            grupo = ('Administración' if nombre in ('Usuarios','Auditoría','Configuración')
+                     else 'Finanzas' if nombre in ('Contratos','Cartera','Reportes') else 'Operaciones')
+            if grupo != grupo_anterior:
+                etiqueta = QLabel(grupo.upper())
+                etiqueta.setObjectName('grupo_menu')
+                self.contenedor_menu.addWidget(etiqueta)
+                self.grupos_menu.append(etiqueta)
+                grupo_anterior = grupo
+            pagina = QWidget()
+            self.definiciones.append((vista, texto))
 
             indice = self.paginas.addWidget(pagina)
 
-            boton = QPushButton(texto)
+            boton = QPushButton(nombre)
+            boton.setIcon(icono(nombre))
+            boton.setToolTip(nombre)
+            boton.setProperty('texto_completo', nombre)
 
             boton.setObjectName(
                 "boton_menu"
@@ -276,7 +301,8 @@ class VentanaPrincipal(QMainWindow):
 
         sidebar.setLayout(layout)
 
-        titulo = QLabel("🚗 CONCESIONARIO")
+        titulo = QLabel("CONCESIONARIO")
+        self.titulo_sidebar = titulo
         titulo.setObjectName("titulo_sidebar")
         titulo.setAlignment(Qt.AlignCenter)
 
@@ -285,9 +311,17 @@ class VentanaPrincipal(QMainWindow):
         layout.addSpacing(20)
 
         self.contenedor_menu = QVBoxLayout()
-        self.contenedor_menu.setSpacing(10)
+        self.contenedor_menu.setSpacing(8)
+        self.contenedor_menu.setContentsMargins(0,0,0,0)
 
-        layout.addLayout(self.contenedor_menu)
+        menu = QWidget()
+        menu.setObjectName('menu_sidebar')
+        menu.setLayout(self.contenedor_menu)
+        area = QScrollArea()
+        area.setFrameShape(QFrame.NoFrame)
+        area.setWidgetResizable(True)
+        area.setWidget(menu)
+        layout.addWidget(area, 1)
 
         layout.addStretch()
 
@@ -315,6 +349,15 @@ class VentanaPrincipal(QMainWindow):
             self.cerrar_sesion
         )
 
+        self.boton_salir = boton_salir
+        herramientas = QHBoxLayout()
+        for texto, accion in [('☰', self.alternar_menu), ('◐', self.alternar_tema)]:
+            boton = QPushButton(texto)
+            boton.setObjectName('boton_herramienta')
+            boton.setToolTip('Contraer menú' if texto == '☰' else 'Cambiar tema claro / oscuro')
+            boton.clicked.connect(accion)
+            herramientas.addWidget(boton)
+        layout.addLayout(herramientas)
         layout.addWidget(boton_salir)
 
         return sidebar
@@ -365,11 +408,33 @@ class VentanaPrincipal(QMainWindow):
         la página destino.
         """
 
+        if indice not in self.paginas_creadas:
+            clase, texto = self.definiciones[indice]
+            VistaBase.diferir_carga = True
+            try:
+                pagina = self.crear_vista(clase, texto)
+            finally:
+                VistaBase.diferir_carga = False
+            anterior = self.paginas.widget(indice)
+            self.paginas.removeWidget(anterior)
+            anterior.deleteLater()
+            area = QScrollArea()
+            area.setFrameShape(QFrame.NoFrame)
+            area.setWidgetResizable(True)
+            area.setWidget(pagina)
+            area.setMinimumSize(0,0)
+            area.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Ignored)
+            self.paginas.insertWidget(indice, area)
+            self.vistas[indice] = pagina
+            self.paginas_creadas.add(indice)
+            if hasattr(pagina, 'navegar_a'):
+                pagina.navegar_a.connect(self.abrir_seccion)
+
         self.paginas.setCurrentIndex(indice)
 
         self.marcar_activo(indice)
 
-        pagina = self.paginas.widget(indice)
+        pagina = self.vistas[indice]
 
         recargar = getattr(
             pagina,
@@ -380,6 +445,37 @@ class VentanaPrincipal(QMainWindow):
         if callable(recargar):
 
             recargar()
+
+    def abrir_seccion(self, nombre):
+        nueva = nombre == 'Nueva venta'
+        nombre = 'Ventas' if nueva else nombre
+        for indice, (_, texto) in enumerate(self.definiciones):
+            if texto.split('  ', 1)[-1] == nombre:
+                self.navegar(indice)
+                if nueva:
+                    QTimer.singleShot(0, self.vistas[indice].nuevo_registro)
+                return
+
+    def alternar_tema(self):
+        aplicar_tema(not bool(QApplication.instance().property('tema_oscuro')))
+
+    def alternar_menu(self):
+        contraido = self.sidebar.width() > 100
+        self.sidebar.setFixedWidth(82 if contraido else 230)
+        self.sidebar.setProperty('contraido', contraido)
+        self.sidebar.style().unpolish(self.sidebar)
+        self.sidebar.style().polish(self.sidebar)
+        for boton in self.botones_menu:
+            boton.style().unpolish(boton)
+            boton.style().polish(boton)
+        for boton in self.botones_menu:
+            boton.setText('' if contraido else boton.property('texto_completo'))
+        for etiqueta in self.grupos_menu:
+            etiqueta.setVisible(not contraido)
+        self.titulo_sidebar.setText('C' if contraido else 'CONCESIONARIO')
+        self.etiqueta_usuario.setVisible(not contraido)
+        self.boton_salir.setText('Salir' if contraido else 'Cerrar sesión')
+        AJUSTES.setValue('menu_contraido', contraido)
 
     def marcar_activo(self, indice):
 

@@ -1,3 +1,5 @@
+from gui.seguimiento_dialog import SeguimientoDialog
+from PySide6.QtWidgets import QGridLayout, QFrame
 # ==========================================
 # CARTERA: CUENTAS POR COBRAR
 # ==========================================
@@ -184,7 +186,8 @@ class CarteraView(VistaBase):
 
         self.proteger(financiera.procesar_vencidas)
 
-        self.recargar()
+        if not self.carga_asincrona:
+            self.recargar()
 
     # =============================
     # INTERFAZ
@@ -214,6 +217,7 @@ class CarteraView(VistaBase):
 
         layout.setSpacing(12)
 
+        layout.addWidget(crear_boton_secundario('Agenda de cobranza', self.abrir_seguimiento))
         layout.addWidget(crear_titulo(
             "Cartera y cobranza"
         ))
@@ -230,7 +234,7 @@ class CarteraView(VistaBase):
 
         self.tarjetas = QWidget()
 
-        layout_tarjetas = QVBoxLayout()
+        layout_tarjetas = QGridLayout()
 
         layout_tarjetas.setContentsMargins(0, 0, 0, 0)
 
@@ -249,11 +253,20 @@ class CarteraView(VistaBase):
 
             etiqueta = QLabel(f"{titulo}: —")
 
-            etiqueta.setObjectName("pie")
+            etiqueta.setObjectName("tile_valor")
 
             self.etiquetas[clave] = etiqueta
 
-            layout_tarjetas.addWidget(etiqueta)
+            marco = QFrame()
+            marco.setObjectName('tile')
+            contenido = QVBoxLayout(marco)
+            nombre = QLabel(titulo)
+            nombre.setObjectName('tile_nombre')
+            etiqueta.setWordWrap(True)
+            contenido.addWidget(nombre)
+            contenido.addWidget(etiqueta)
+            indice = len(self.etiquetas) - 1
+            layout_tarjetas.addWidget(marco, indice // 3, indice % 3)
 
         layout.addWidget(self.tarjetas)
 
@@ -265,27 +278,30 @@ class CarteraView(VistaBase):
 
         self.pestanas.addTab(
             self.crear_panel_por_cobrar(),
-            "💼  Por cobrar"
+            "Por cobrar"
         )
 
         self.pestanas.addTab(
             self.crear_panel_vencidas(),
-            "⏰  Vencidas"
+            "Vencidas"
         )
 
         self.pestanas.addTab(
             self.crear_panel_por_vencer(),
-            "📅  Por vencer"
+            "Por vencer"
         )
 
         self.pestanas.addTab(
             self.crear_panel_antiguedad(),
-            "📊  Antigüedad"
+            "Antigüedad"
         )
 
         layout.addWidget(self.pestanas)
 
         self.setLayout(layout)
+
+    def abrir_seguimiento(self):
+        SeguimientoDialog(self).exec()
 
     def crear_panel_por_cobrar(self):
 
@@ -480,8 +496,18 @@ class CarteraView(VistaBase):
     # DATOS
     # =============================
 
-    def recargar(self):
+    def cargar_datos(self):
+        self.recargar()
 
+    def recargar(self):
+        if self.carga_asincrona and self.cache_consultas is None:
+            dias = self.campo_dias_aviso.currentText().strip()
+            dias = int(dias) if dias.isdigit() else DIAS_AVISO_POR_DEFECTO
+            consultas = [(cobranza.resumen_cartera, (), {}), (cobranza.cuentas_por_cobrar, (), {}),
+                (cobranza.cuotas_vencidas, (), {}), (cobranza.cuotas_por_vencer, (dias,), {}),
+                (cobranza.envejecer_cartera, (), {}), (cobranza.concentracion_cartera, (), {})]
+            self.consultar_lote(consultas, self.recargar)
+            return
         self.pintar_resumen()
 
         self.pintar_por_cobrar()

@@ -1,3 +1,8 @@
+from utils.helpers import ancho_acciones_para
+from PySide6.QtWidgets import QMenu
+from gui.fichas_dialog import ClienteFichaDialog
+from utils.helpers import crear_boton_secundario
+from PySide6.QtWidgets import QComboBox
 from database.clientes import (
     obtener_clientes,
     buscar_clientes,
@@ -28,6 +33,7 @@ class ClientesView(VistaListado):
     ]
 
     columna_acciones = 6
+    ancho_acciones = ancho_acciones_para([84])
 
     # El correo es lo más ancho de esta tabla
     # (hasta 20 px de padding por celda), así
@@ -51,6 +57,20 @@ class ClientesView(VistaListado):
         "Registra un cliente para poder "
         "asociarlo a una venta."
     )
+
+    def crear_interfaz(self):
+        super().crear_interfaz()
+        self.acciones_encabezado.addWidget(crear_boton_secundario('Ver ficha', self.abrir_ficha))
+        self.tabla.cellDoubleClicked.connect(lambda fila, columna: self.abrir_ficha(fila))
+
+    def abrir_ficha(self, fila=None):
+        if fila is None or isinstance(fila, bool):
+            fila = self.tabla.currentRow()
+        if fila < 0 or self.tabla.item(fila, 0) is None:
+            return
+        dialogo = ClienteFichaDialog(self, int(self.tabla.item(fila, 0).text()))
+        dialogo.exec()
+        self.cargar_datos()
 
     def cargar_datos(self):
 
@@ -80,13 +100,19 @@ class ClientesView(VistaListado):
             centrar={0}
         )
 
-        botones = crear_botones_accion(
-            lambda _, f=fila: self.editar_cliente(f),
-            lambda _, f=fila: self.eliminar_cliente(f),
-            mostrar_eliminar=self.puede_gestionar
-        )
+        boton = crear_botones_accion(lambda _, f=fila: self.menu_fila(f), None, texto_editar='Más…', mostrar_eliminar=False, ancho_editar=84)
+        self.poner_acciones(fila, boton)
 
-        self.poner_acciones(fila, botones)
+    def menu_fila(self, fila):
+        menu = QMenu(self)
+        menu.addAction('Ver ficha', lambda: self.abrir_ficha(fila))
+        if self.puede_gestionar:
+            menu.addAction('Editar', lambda: self.editar_cliente(fila))
+            menu.addSeparator()
+            menu.addAction('Eliminar', lambda: self.eliminar_cliente(fila))
+        boton = self.tabla.cellWidget(fila, self.columna_acciones)
+        menu.exec(boton.mapToGlobal(boton.rect().bottomLeft()))
+
 
     def buscar(self, texto):
 

@@ -76,7 +76,8 @@ class ReportesView(VistaBase):
 
         self.cargar_listas()
 
-        self.cargar_datos()
+        if not self.carga_asincrona:
+            self.cargar_datos()
 
     # =============================
     # INTERFAZ
@@ -529,6 +530,12 @@ class ReportesView(VistaBase):
     def cargar_datos(self):
 
         filtros = self.obtener_filtros()
+        if self.carga_asincrona and self.cache_consultas is None:
+            consultas = [(obtener_metricas, (), filtros), (obtener_detalle_ventas, (), filtros),
+                (obtener_vehiculos_vendidos, (), filtros), (obtener_clientes_con_compras, (), filtros),
+                (obtener_ventas_por_vendedor, (), filtros), (obtener_stock_actual, (), {})]
+            self.consultar_lote(consultas, self.cargar_datos)
+            return
 
         self.cargar_metricas(filtros)
         self.cargar_tabla_ventas(filtros)
@@ -656,7 +663,7 @@ class ReportesView(VistaBase):
                 nombre,
                 apellido,
                 compras,
-                f"{float(importe):,.2f}"
+                f"{formato_dinero(float(importe))}"
             )
             for (
                 id_cliente, nombre, apellido,

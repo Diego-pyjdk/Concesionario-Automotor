@@ -1,3 +1,4 @@
+from gui.tema import aplicar_tema
 # ==========================================
 # PUNTO DE ENTRADA
 # ==========================================
@@ -91,6 +92,7 @@ def ejecutar():
     app.setApplicationName(NOMBRE_SISTEMA)
 
     cargar_estilos(app)
+    aplicar_tema()
 
     # La moneda se lee una vez y se queda en
     # memoria. Calentarla aquí evita que el primer

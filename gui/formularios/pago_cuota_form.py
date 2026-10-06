@@ -41,9 +41,10 @@ from database.pagos import FORMAS_PAGO
 from errores import PermisoDenegado
 
 from utils.helpers import (
+    conectar_enter_guardar,
+    configurar_campo_monetario,
     crear_boton_principal,
     crear_boton_secundario,
-    conectar_enter_guardar
 )
 
 from utils.moneda import formato_dinero
@@ -106,16 +107,17 @@ class PagoCuotaForm(QDialog):
 
         self.campo_importe = QDoubleSpinBox()
 
-        self.campo_importe.setRange(0, 999999999)
+        # Sin separador de miles DENTRO del campo: ese
+        # separador lo pone el locale del sistema, no la
+        # moneda configurada, y con los dos distintos el
+        # mismo numero se ve de dos formas en la misma
+        # pantalla. El importe se lee entero y se
+        # ensea formateado al lado.
 
-        self.campo_importe.setDecimals(2)
-
-        # Sin separador de miles en el campo. QDoubleSpinBox
-        # lo pone con el punto, que en el formato que se
-        # usa para escribir se lee como decimal: obliga a
-        # teclear 1000,50 en vez de 1.000,50.
-
-        self.campo_importe.setGroupSeparatorShown(False)
+        configurar_campo_monetario(
+            self.campo_importe,
+            con_prefijo=False
+        )
 
         formulario.addRow(
             "Importe a cobrar:", self.campo_importe

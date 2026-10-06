@@ -156,13 +156,18 @@ def celda(texto, centrar=False, objeto=None):
     """
 
     item = QTableWidgetItem(str(texto))
+    item.setData(Qt.UserRole, objeto)
 
     if centrar:
         item.setTextAlignment(Qt.AlignCenter)
 
     if objeto in TONOS_CELDA:
 
-        fondo = QColor(TONOS_CELDA[objeto])
+        from PySide6.QtWidgets import QApplication
+        oscuro = bool(QApplication.instance().property('tema_oscuro'))
+        tonos_oscuros = {'tono_ok':'#163e32','tono_fuerte_ok':'#166534','tono_info':'#193656',
+                         'tono_aviso':'#473b22','tono_peligro':'#492631'}
+        fondo = QColor(tonos_oscuros[objeto] if oscuro else TONOS_CELDA[objeto])
 
         item.setBackground(fondo)
 
@@ -509,6 +514,94 @@ def ancho_acciones_para(anchos):
         + MARGEN_ACCIONES
         + ANCHO_BARRA
     )
+
+
+def configurar_campo_monetario(
+    campo,
+    con_prefijo=True,
+    maximo=None,
+    minimo=0.0
+):
+    """
+    Prepara un QDoubleSpinBox para escribir un importe
+    en la moneda que hay en curso.
+
+    ------------------------------
+    # POR QUÉ UN HELPER Y NO SEIS
+    # ------------------------------
+
+    Porque los seis campos de dinero de la aplicación
+    (precio de vehículo, precio de venta, importe de
+    pago, de cobro de cuota, de cobro adelantado y
+    gastos administrativos) tenían cada uno su
+    `setRange`, su `setDecimals` y su `setPrefix`
+    escrito a mano, y tres de ellos no llamaban a
+    `setGroupSeparatorShown`.
+
+    Eso importa por dos razones:
+
+      - El separador de miles del campo lo pone el
+        LOCALE DEL SISTEMA, no la configuración. Sin
+        `setGroupSeparatorShown(False)`, con la moneda
+        en guaraníes el campo enseñaba "150.000.000"
+        con la coma del locale y el punto de la
+        configuración, que es el mismo número con dos
+        formatos distintos en la misma pantalla.
+
+      - El tope del campo tiene que ser el de la base
+        (`DECIMAL(15,2)`, 13 cifras). El que había,
+        999.999.999, está por debajo: en guaraníes un
+        vehículo normal cuesta 30-100 millones, así que
+        un campo que se queda corto a 100.000.000
+        recorta el precio EN SILENCIO. Y `es_precio()`
+        de validaciones.py daba por bueno hasta
+        999.999.999, que MySQL ni siquiera acepta.
+
+    ------------------------------
+    # `con_prefijo`
+    # ------------------------------
+
+    False para los campos que ya llevan el símbolo
+    puesto en la etiqueta de al lado, o que están
+    dentro de una tabla donde el símbolo estorba.
+    """
+    from utils import moneda as _moneda
+
+    ajustes = _moneda.config_actual()
+
+    if maximo is None:
+
+        maximo = _moneda.maximo_teclado()
+
+    campo.setDecimals(
+        _moneda.decimales_de_teclado(ajustes)
+    )
+
+    campo.setRange(
+        float(minimo),
+        float(maximo)
+    )
+
+    campo.setSingleStep(
+        _moneda.paso_de_teclado(ajustes)
+    )
+
+    # Sin separador de miles dentro del campo: el
+    # separador que se ve ahí lo pone el locale del
+    # sistema, no la moneda configurada. Con los dos
+    # distintos, escribir un importe grande es
+    # realmente distinto. El importe se lee entero y
+    # se enseña formateado al lado.
+
+    campo.setGroupSeparatorShown(False)
+
+    if con_prefijo:
+
+        campo.setPrefix(
+            _moneda.prefijo_moneda(ajustes)
+        )
+
+    return campo
 
 
 def ajustar_alto_tabla(tabla, maximo=340):

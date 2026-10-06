@@ -130,19 +130,40 @@ def formato_fecha(valor):
     return str(valor)
 
 
-def formato_dinero(valor):
+def formato_dinero(valor, moneda=None):
     """
     Importe con separador de miles.
 
-    El símbolo de la moneda sale de la
-    configuración: aquí solo se delega en
-    utils.moneda, que es el único sitio donde
-    vive. Se mantiene esta función porque el PDF,
-    los reportes y las vistas la usan por todas
-    partes.
+    El símbolo de la moneda sale de
+    utils.moneda, que es el único sitio donde vive.
+    Se mantiene esta función porque el PDF, los
+    reportes y las vistas la usan por todas partes.
+
+    ------------------------------
+    # POR QUÉ `moneda` Y NO SOLO EL
+    # VALOR
+    # ------------------------------
+
+    Porque un contrato ya firmado dice una moneda, y esa
+    no tiene por qué ser la que hay configurada ahora.
+
+    Si el concesionario pasa de dólares a guaraníes y el
+    PDF del contrato se imprimiera con la moneda en
+    curso, un contrato de $ 25.000 saldría en el papel
+    como "Gs. 25.000". Eso no es un detalle de
+    presentación: es un documento firmado que dice otra
+    cosa que la que se pactó, y que además está mal
+    porque el número no se ha convertido.
+
+    Con `moneda=contrato["moneda"]` el PDF sale
+    siempre como se firmó.
+
+    Sin el argumento se usa la moneda en curso, que es
+    lo que quieren las vistas que muestran un número
+    suelto.
     """
 
-    return _moneda.formato_dinero(valor)
+    return _moneda.formato_dinero(valor, moneda=moneda)
 
 
 def cuota_importe(contrato):
@@ -946,11 +967,14 @@ def construir_historia(contrato, estilos):
                 ("Marca", contrato["marca"]),
                 ("Modelo", contrato["modelo"]),
                 ("Año", contrato["anio"]),
+                ("Chasis / VIN", contrato.get('vin') or NO_REGISTRADO),
+                ("Matrícula", contrato.get('matricula') or NO_REGISTRADO),
                 ("Color", contrato["color"] or NO_REGISTRADO),
                 (
                     "Precio de lista",
                     formato_dinero(
-                        contrato["precio_lista"]
+                        contrato["precio_lista"],
+                        moneda=contrato.get("moneda")
                     )
                 )
             ],
@@ -1016,12 +1040,18 @@ def construir_historia(contrato, estilos):
         ),
         (
             "Precio de venta:",
-            formato_dinero(contrato["precio_venta"])
+            formato_dinero(
+                contrato["precio_venta"],
+                moneda=contrato.get("moneda")
+            )
         ),
         ("Forma de pago:", contrato["forma_pago"]),
         (
             "Anticipo:",
-            formato_dinero(contrato["anticipo"])
+            formato_dinero(
+                contrato["anticipo"],
+                moneda=contrato.get("moneda")
+            )
         )
     ]
 
@@ -1032,7 +1062,10 @@ def construir_historia(contrato, estilos):
         filas_pago.append((
             f"Importe de cada cuota "
             f"({contrato['cantidad_cuotas']} cuotas):",
-            formato_dinero(cuota)
+            formato_dinero(
+                cuota,
+                moneda=contrato.get("moneda")
+            )
         ))
 
     bloque_pago.append(
@@ -1102,6 +1135,12 @@ def bloque_total(contrato, cuota, estilos):
     """
     Caja con el total pendiente y, si hay,
     el detalle de las cuotas.
+
+    El total sale con la moneda del CONTRATO, no con
+    la que haya configurada ahora: es la cifra que se
+    pactó, y un contrato firmado que se reimprime
+    diciendo otra moneda es un documento que ya no
+    sirve para nada.
     """
 
     try:
@@ -1117,6 +1156,8 @@ def bloque_total(contrato, cuota, estilos):
         anticipo = 0.0
 
     saldo = max(0.0, precio - anticipo)
+
+    moneda = contrato.get("moneda")
 
     if cuota is not None:
 
@@ -1139,7 +1180,7 @@ def bloque_total(contrato, cuota, estilos):
                     estilos["total"]
                 ),
                 Paragraph(
-                    formato_dinero(saldo),
+                    formato_dinero(saldo, moneda=moneda),
                     estilos["total"]
                 ),
                 Paragraph(
@@ -1164,7 +1205,7 @@ def bloque_total(contrato, cuota, estilos):
                     estilos["total"]
                 ),
                 Paragraph(
-                    formato_dinero(saldo),
+                    formato_dinero(saldo, moneda=moneda),
                     estilos["valor_derecha"]
                 )
             ]

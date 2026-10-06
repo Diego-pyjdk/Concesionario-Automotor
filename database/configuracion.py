@@ -9,6 +9,8 @@ from database.auditoria import registrar_accion
 
 from utils.moneda import (
     FORMATOS as FORMATOS_MONEDA,
+    MONEDAS,
+    config_de,
     validar_config
 )
 
@@ -24,7 +26,7 @@ from permisos import (
 
 NOMBRE_SISTEMA = "Concesionario Automotor"
 
-VERSION_SISTEMA = "1.1.0"
+VERSION_SISTEMA = "1.2.1"
 
 CLAVE_STOCK_MINIMO = "stock_minimo"
 
@@ -45,41 +47,63 @@ CLAVE_MONEDA_MILES = "moneda_separador_miles"
 
 CLAVE_MONEDA_DECIMALES = "moneda_separador_decimales"
 
-# Lo que se escribe si no hay nada guardado. Son
-# los MISMOS valores que producía el "$ " escrito
-# a mano, para que cambiar a moneda configurable
-# no altere ni un pixel de la aplicación.
+# ------------------------------
+# CUÁNTOS DECIMALES SE MUESTRAN
+# ------------------------------
+# Es la sexta clave, y la que hace posible el guaraní:
+# sin ella el sistema es estructuralmente de dos
+# decimales, y "Gs. 1.500,00" es un formato que no
+# existe. Se guarda como texto porque la tabla
+# configuracion es de clave/valor y no distingue.
+
+CLAVE_MONEDA_CIFRAS = "moneda_cifras"
+
+# ------------------------------
+# LAS MONEDAS, Y POR QUÉ NO SE
+# ESCRIBEN A MANO
+# ------------------------------
+# Solo dos: guaraní y dólar. Vienen del catálogo de
+# utils/moneda.py, que es donde viven el símbolo, los
+# separadores y los decimales de cada una.
+#
+# Elegir una moneda elige LAS CINCO COSAS a la vez. Es
+# lo que hace imposible lo que antes se podía teclear
+# sin darse cuenta: guaraníes con dos decimales, o
+# dólares con el punto de miles. Cada una de esas
+# combinaciones produce importes que no se pueden leer,
+# y se descubren en un contrato, no en la pantalla.
 
 MONEDA_POR_DEFECTO = {
     "codigo": "USD",
     "simbolo": "$",
     "formato": "simbolo_espacio",
     "separador_miles": ",",
-    "separador_decimales": "."
+    "separador_decimales": ".",
+    "decimales": 2
 }
 
 DESCRIPCIONES_MONEDA = {
     CLAVE_MONEDA_CODIGO: (
-        "Código de la moneda (USD, EUR, MXN...). "
-        "Se muestra en los formatos que usan "
-        "código en vez de símbolo."
+        "Moneda de la aplicación: PYG o USD. El "
+        "símbolo, los separadores y los decimales "
+        "salen del catálogo, no se escriben a mano."
     ),
     CLAVE_MONEDA_SIMBOLO: (
-        "Símbolo de la moneda, como $ o €."
+        "Símbolo de la moneda."
     ),
     CLAVE_MONEDA_FORMATO: (
-        "Cómo se juntan el símbolo y el importe: "
-        "simbolo_espacio, simbolo_pegado, "
-        "simbolo_despues, codigo_espacio, "
-        "codigo_pegado o codigo_despues."
+        "Cómo se juntan el símbolo y el importe."
     ),
     CLAVE_MONEDA_MILES: (
-        "Separador de millares. Con ',' son "
-        "1,500.00; con '.' son 1.500,00."
+        "Separador de millares."
     ),
     CLAVE_MONEDA_DECIMALES: (
-        "Separador de decimales. Con '.' son "
-        "1,500.00; con ',' son 1.500,00."
+        "Separador de decimales. Vacío si la moneda "
+        "no usa decimales."
+    ),
+    CLAVE_MONEDA_CIFRAS: (
+        "Cuántos decimales se muestran. El "
+        "guaraní no tiene subunitario: 0."
     )
 }
 
@@ -252,9 +276,43 @@ def leer_moneda():
 
         valor = guardado.get(clave)
 
-        if valor and len(valor) == 1:
+        # El separador de decimales puede venir vacío
+        # a propósito: es lo que dice que la moneda no
+        # usa decimales. Antes un vacío se tomaba por
+        # "no guardado" y se caía al valor por defecto,
+        # así que una moneda sin decimales no se podía
+        # guardar.
+
+        if valor is None:
+
+            continue
+
+        if valor == "" and nombre == "separador_decimales":
+
+            ajustes[nombre] = ""
+
+        elif len(valor) == 1:
 
             ajustes[nombre] = valor
+
+    # ------------------------------
+    # LOS DECIMALES
+    # ------------------------------
+    # Se leen de la clave nueva. Si no está (una base
+    # instalada antes de esta versión) se deducen del
+    # separador de decimales: si está vacío, cero.
+
+    try:
+
+        ajustes["decimales"] = int(
+            guardado.get(CLAVE_MONEDA_CIFRAS)
+        )
+
+    except (TypeError, ValueError):
+
+        if ajustes["separador_decimales"] == "":
+
+            ajustes["decimales"] = 0
 
     return ajustes
 
@@ -285,31 +343,66 @@ def obtener_moneda():
 
 @conexiones_libres
 @requiere_permiso(GESTIONAR_CONFIGURACION)
-def actualizar_moneda(codigo, simbolo, formato,
-                      separador_miles,
-                      separador_decimales):
+def actualizar_moneda(codigo):
     """
-    Guarda la configuración de la moneda y la
-    aplica en memoria, para que se vea sin
-    reiniciar.
+    Cambia la moneda de la aplicación.
+
+    Recibe SOLO el código ("PYG" o "USD") y saca el
+    símbolo, el formato, los dos separadores y los
+    decimales del catálogo de `utils/moneda.py`.
+
+    ------------------------------
+    # POR QUÉ UN ARGUMENTO Y NO CINCO
+    # ------------------------------
+
+    Porque las cinco cosas van juntas y no se pueden
+    elegir por separado sin producir importes que no se
+    pueden leer: guaraníes con dos decimales, o dólares
+    con el punto de miles. Antes quien configuraba
+    tecleaba el símbolo y elegía los separadores de dos
+    desplegables, y el resultado era una mezcla que
+    parecía válida y no lo era. Se descubría leyendo
+    un contrato.
+
+    Un desplegable con dos opciones no se equivoca.
+
+    ------------------------------
+    # NO CONVIERTE NADA
+    # ------------------------------
+
+    Esto cambia cómo se MUESTRAN e INTERPRETAN los
+    importes. No toca ni un valor de `ventas`,
+    `contratos`, `cuotas` ni `pagos`, y no calcula
+    ningún tipo de cambio.
+
+    Es lo correcto y no es un recorte: convertir un
+    contrato firmado exige una fecha, una fuente y una
+    tasa que aquí no hay. Un "Gs. 25.000" que en
+    realidad son 25.000 dólares es peor que un importe
+    sin moneda.
+
+    Los contratos que ya tienen `moneda` guardada
+    siguen enseñándose con la suya, así que este ajuste
+    no reescribe documentos firmados.
 
     Devuelve (True, "") o (False, motivo).
-
-    Valida antes de escribir: un separador de dos
-    caracteres haría que todos los importes de la
-    aplicación fueran ambiguos, y eso no se
-    descubre leyendo un contrato.
     """
 
     from utils import moneda
 
-    nuevo = {
-        "codigo": (codigo or "").strip(),
-        "simbolo": simbolo,
-        "formato": formato,
-        "separador_miles": separador_miles,
-        "separador_decimales": separador_decimales
-    }
+    clave = str(codigo or "").strip().upper()
+
+    if clave not in MONEDAS:
+
+        return (
+            False,
+            f"'{clave}' no es una moneda disponible. "
+            "Las que hay: "
+            + ", ".join(MONEDAS.keys())
+            + "."
+        )
+
+    nuevo = config_de(clave)
 
     valido, mensaje = moneda.validar_config(nuevo)
 
@@ -317,32 +410,21 @@ def actualizar_moneda(codigo, simbolo, formato,
 
         return (False, mensaje)
 
-    if (
-        nuevo["separador_miles"]
-        == nuevo["separador_decimales"]
-    ):
-
-        return (
-            False,
-            "El separador de miles y el de "
-            "decimales no pueden ser el mismo: "
-            "el importe no se podría leer."
-        )
-
     anterior = leer_moneda()
 
     conexion = obtener_conexion()
     cursor = conexion.cursor()
 
-    for clave, valor in (
-        (CLAVE_MONEDA_CODIGO, nuevo["codigo"]),
-        (CLAVE_MONEDA_SIMBOLO, nuevo["simbolo"]),
-        (CLAVE_MONEDA_FORMATO, nuevo["formato"]),
-        (CLAVE_MONEDA_MILES,
-         nuevo["separador_miles"]),
-        (CLAVE_MONEDA_DECIMALES,
-         nuevo["separador_decimales"])
+    for nombre, clave_ajuste in (
+        ("codigo", CLAVE_MONEDA_CODIGO),
+        ("simbolo", CLAVE_MONEDA_SIMBOLO),
+        ("formato", CLAVE_MONEDA_FORMATO),
+        ("separador_miles", CLAVE_MONEDA_MILES),
+        ("separador_decimales", CLAVE_MONEDA_DECIMALES),
+        ("decimales", CLAVE_MONEDA_CIFRAS)
     ):
+
+        valor = str(nuevo[nombre])
 
         cursor.execute(
             """
@@ -352,10 +434,10 @@ def actualizar_moneda(codigo, simbolo, formato,
             ON DUPLICATE KEY UPDATE valor = %s
             """,
             (
-                clave,
-                str(valor),
-                DESCRIPCIONES_MONEDA[clave],
-                str(valor)
+                clave_ajuste,
+                valor,
+                DESCRIPCIONES_MONEDA[clave_ajuste],
+                valor
             )
         )
 
@@ -372,20 +454,31 @@ def actualizar_moneda(codigo, simbolo, formato,
 
     for nombre in ("codigo", "simbolo", "formato",
                    "separador_miles",
-                   "separador_decimales"):
+                   "separador_decimales", "decimales"):
 
-        if anterior[nombre] != nuevo[nombre]:
+        if anterior.get(nombre) != nuevo[nombre]:
 
             cambios.append(
                 f"{nombre}: "
-                f"{anterior[nombre]} -> "
+                f"{anterior.get(nombre)} -> "
                 f"{nuevo[nombre]}"
             )
+
+    if not cambios:
+
+        # Se guardó lo mismo que ya había. Se dice igual,
+        # porque quien apretó el botón quiere una
+        # confirmación, no un silencio que parece un fallo.
+
+        cambios = ["sin cambios"]
 
     registrar_accion(
         "configuracion",
         "CONFIGURACION",
-        "Moneda actualizada: " + "; ".join(cambios)
+        "Moneda actualizada a "
+        f"{clave} ({moneda.nombre_de(clave)}): "
+        + "; ".join(cambios)
+        + ". No se convierte ningún importe."
     )
 
     return (True, "")

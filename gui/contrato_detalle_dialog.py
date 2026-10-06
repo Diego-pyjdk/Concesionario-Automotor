@@ -601,6 +601,39 @@ class ContratoDetalleDialog(QDialog):
     # CARGA
     # =============================
 
+    def dinero(self, valor):
+        """
+        Un importe de ESTE contrato, con la moneda de
+        ESTE contrato.
+
+        ------------------------------
+        # POR QUÉ UN MÉTODO Y NO UNA
+        # VARIABLE SUELTA
+        # ------------------------------
+
+        Porque son diecinueve llamadas y basta con que
+        una se quede sin `moneda=` para que un importe de
+        un contrato firmado salga en la moneda que hay
+        configurada ahora. Eso no se ve mirando el
+        código: se ve en una pantalla, cuando un
+        contrato en dólares dice "Gs. 25.000" porque el
+        concesionario cambió de moneda hace un mes.
+
+        Con este método no se puede olvidar: o se usa
+        `self.dinero(...)`, o no hay imports que toque.
+
+        Y los contratos ya guardan su moneda
+        (`contratos.moneda`, la que tenía el ajuste en el
+        momento de firmar). Un contrato firmado que se
+        reimprime diciendo otra moneda es un documento
+        que ya no sirve para nada.
+        """
+
+        return formato_dinero(
+            valor,
+            moneda=(self.contrato or {}).get("moneda")
+        )
+
     def cargar(self):
 
         self.contrato = self.leer_contrato()
@@ -800,16 +833,16 @@ class ContratoDetalleDialog(QDialog):
              )),
             ("Forma de pago", contrato["forma_pago"]),
             ("Precio de venta",
-             formato_dinero(contrato["precio_venta"])),
+             self.dinero(contrato["precio_venta"])),
             ("Precio de lista",
-             formato_dinero(
+             self.dinero(
                  contrato["precio_lista"]
                  or contrato["precio_venta"]
              )),
             ("Entrega inicial",
-             formato_dinero(contrato["anticipo"])),
+             self.dinero(contrato["anticipo"])),
             ("Saldo financiado",
-             formato_dinero(
+             self.dinero(
                  contrato["saldo_financiado"] or 0
              )),
             ("Cuotas",
@@ -821,7 +854,7 @@ class ContratoDetalleDialog(QDialog):
                  else "sin tasa"
              )),
             ("Gastos de administración",
-             formato_dinero(
+             self.dinero(
                  contrato["gastos_administrativos"] or 0
              )),
             ("Periodicidad",
@@ -953,7 +986,7 @@ class ContratoDetalleDialog(QDialog):
         if contrato["monto_cuota"]:
 
             texto += (
-                f" de {formato_dinero(contrato['monto_cuota'])}"
+                f" de {self.dinero(contrato['monto_cuota'])}"
             )
 
         return texto
@@ -994,8 +1027,8 @@ class ContratoDetalleDialog(QDialog):
             valores = [
                 f"{cuota['numero']}",
                 str(cuota["fecha_vencimiento"]),
-                formato_dinero(cuota["importe"]),
-                formato_dinero(cuota["saldo"]),
+                self.dinero(cuota["importe"]),
+                self.dinero(cuota["saldo"]),
                 f"{cuota['cantidad_pagos']}",
                 self.texto_dias(cuota),
                 financiera.ESTADOS.get(
@@ -1067,7 +1100,7 @@ class ContratoDetalleDialog(QDialog):
 
         self.etiqueta_cronograma.setText(
             f"{len(filas)} cuota(s) por "
-            f"{formato_dinero(self.importe_cronograma())}."
+            f"{self.dinero(self.importe_cronograma())}."
             + (
                 f" {self.resumen.get('pagadas', 0)} "
                 "pagada(s), "
@@ -1254,7 +1287,7 @@ class ContratoDetalleDialog(QDialog):
             valores = [
                 pago["recibo"] or "—",
                 str(pago["fecha"]),
-                formato_dinero(pago["importe"]),
+                self.dinero(pago["importe"]),
                 pago["forma"],
                 (
                     f"{pago['numero_cuota']}"
@@ -1331,20 +1364,20 @@ class ContratoDetalleDialog(QDialog):
 
         self.etiquetas_dinero["financiado"].setText(
             "Saldo financiado: "
-            + formato_dinero(self.saldo_financiado())
+            + self.dinero(self.saldo_financiado())
         )
 
         self.etiquetas_dinero["cobrado"].setText(
-            f"Cobrado: {formato_dinero(total)}"
+            f"Cobrado: {self.dinero(total)}"
         )
 
         self.etiquetas_dinero["pendiente"].setText(
-            f"Pendiente: {formato_dinero(pendiente)}"
+            f"Pendiente: {self.dinero(pendiente)}"
         )
 
         self.etiquetas_dinero["vencido"].setText(
             "Vencido: "
-            + formato_dinero(self.importe_vencido())
+            + self.dinero(self.importe_vencido())
         )
 
         if not pagos:
@@ -1682,7 +1715,7 @@ class ContratoDetalleDialog(QDialog):
             "Generar el cronograma",
             f"Se crearán "
             f"{self.contrato['cantidad_cuotas']} cuotas "
-            f"por {formato_dinero(self.saldo_financiado())}, "
+            f"por {self.dinero(self.saldo_financiado())}, "
             f"la primera el "
             f"{self.contrato['primer_vencimiento']}.\n\n"
             "Un cronograma ya creado no se puede "
@@ -1785,7 +1818,7 @@ class ContratoDetalleDialog(QDialog):
         if not self.confirmar(
             "Anular la cuota",
             f"Se anulará la cuota {cuota['numero']}, de "
-            f"{formato_dinero(cuota['importe'])}.\n\n"
+            f"{self.dinero(cuota['importe'])}.\n\n"
             "Deja de ser exigible y vuelve a "
             "sumar al cronograma pendiente. Podrá "
             "reactivarla después.\n\n"
@@ -1855,7 +1888,7 @@ class ContratoDetalleDialog(QDialog):
             "Anular el pago",
             f"Se anulará el pago "
             f"{pago['recibo'] or ''} de "
-            f"{formato_dinero(pago['importe'])} "
+            f"{self.dinero(pago['importe'])} "
             f"y el importe volverá a la cuota.\n\n"
             "El pago no se borra: queda registrado "
             "como anulado, con su motivo.\n\n"
@@ -2179,7 +2212,7 @@ class ContratoDetalleDialog(QDialog):
             textos.append(
                 f"{grupo['recibo'] or '(sin recibo)'}   ·   "
                 f"{grupo['pagos'][0]['fecha']}   ·   "
-                f"{formato_dinero(grupo['total'])}   ·   "
+                f"{self.dinero(grupo['total'])}   ·   "
                 f"{cuota}"
             )
 

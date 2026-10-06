@@ -28,9 +28,7 @@ import sys
 
 import pytest
 
-RAIZ = pathlib.Path(
-    "C:/Users/Tucan-Programmer/Desktop/concesionario"
-)
+RAIZ = pathlib.Path(__file__).resolve().parents[1]
 
 VENV_PYTHON = RAIZ / "venv" / "Scripts" / "python.exe"
 

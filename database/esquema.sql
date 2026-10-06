@@ -74,7 +74,7 @@ CREATE TABLE autos (
 
     anio INT NOT NULL,
 
-    precio DECIMAL(10, 2) NOT NULL,
+    precio DECIMAL(15, 2) NOT NULL,
 
     color VARCHAR(50) DEFAULT NULL,
 
@@ -166,6 +166,48 @@ CREATE TABLE usuarios (
 
 
 -- ==========================================
+-- LOS IMPORTES
+-- ==========================================
+-- Todas las columnas de dinero son DECIMAL(15, 2):
+-- 13 cifras enteras y dos decimales.
+--
+-- Antes eran DECIMAL(10, 2), cuyo techo son
+-- 99.999.999,99. Ese numero estaba pensado para
+-- dolares y en guaranies es un caso corriente
+-- superado: un vehiculo de 100.000.000 no cabia.
+--
+-- El fallo era doble, y por eso importa mas que el
+-- numero en si:
+--
+--   - La validacion de la aplicacion daba por bueno
+--     hasta 999.999.999, que es mas de lo que MySQL
+--     acepta. En esa ventana el formulario dejaba
+--     guardar y la base rechazaba con "Out of range".
+--
+--   - Los campos de escritura se quedaban en
+--     999.999.999, y en vez de avisar recortaban el
+--     precio en silencio: se tecleaba 150.000.000 y
+--     se guardaba 999.999.999.
+--
+-- Ampliar la columna no altera ni un valor ya
+-- guardado: DECIMAL(10,2) y DECIMAL(15,2) guardan
+-- el mismo 25.000,00. Solo caben mas cifras.
+--
+-- ------------------------------
+-- LA MONEDA NO SE CONVIERTE
+-- ------------------------------
+-- Cambiar el ajuste de moneda cambia COMO SE MUESTRA
+-- un importe, no su valor. No hay tipo de cambio en
+-- ninguna parte, y no se calcula ninguno.
+--
+-- Para eso estan `ventas.moneda` y `contratos.moneda`:
+-- guardan con que moneda se hizo cada operacion, para
+-- que un contrato firmado no cambie de "$ 25,000.00"
+-- a "Gs. 25.000" porque alguien toco un ajuste. El
+-- numero seria el mismo y estaria mal.
+
+
+-- ==========================================
 -- VENTAS
 -- ==========================================
 -- Une cliente y vehículo (1:N con ambos).
@@ -194,7 +236,36 @@ CREATE TABLE ventas (
 
     fecha DATE NOT NULL,
 
-    precio DECIMAL(10, 2) NOT NULL,
+    -- 15,2 y no 10,2: con 10,2 el techo son
+    -- 99.999.999,99, y en guaranies un vehiculo
+    -- normal cuesta 30-100 millones. Con el tope
+    -- viejo, un precio de 100.000.000 lo rechazaba
+    -- MySQL con "Out of range" DESPUES de que la
+    -- validacion de la aplicacion lo habia
+    -- aceptado: la ventana entre lo que se puede
+    -- escribir y lo que se puede guardar.
+    --
+    -- Ampliar la columna no altera ni un valor
+    -- guardado: solo caben mas cifras.
+    precio DECIMAL(15, 2) NOT NULL,
+
+    -- Moneda con la que se registro la venta.
+    --
+    -- Sin esta columna, una venta de 25.000 dolares
+    -- se reenseñaria como "Gs. 25.000" en cuanto el
+    -- concesionario cambiara el ajuste de moneda, y el
+    -- numero no se habria convertido: seria un
+    -- documento que dice una cantidad y significa
+    -- otra.
+    --
+    -- Es la MISMA cosa que contratos.moneda, y por el
+    -- mismo motivo. Se escribe al registrar la venta,
+    -- con la moneda que hay en ese momento, y no se
+    -- toca nunca mas.
+    --
+    -- No hay conversion: el valor es el que es, en la
+    -- moneda que dice la columna.
+    moneda VARCHAR(10) NOT NULL DEFAULT 'USD',
 
     PRIMARY KEY (id),
 
@@ -393,12 +464,12 @@ CREATE TABLE contratos (
 
     fecha DATE NOT NULL,
 
-    precio_venta DECIMAL(10, 2) NOT NULL,
+    precio_venta DECIMAL(15, 2) NOT NULL,
 
     forma_pago VARCHAR(40) NOT NULL
         DEFAULT 'Contado',
 
-    anticipo DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+    anticipo DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
 
     cantidad_cuotas INT NOT NULL DEFAULT 0,
 
@@ -418,7 +489,7 @@ CREATE TABLE contratos (
     -- firmado tiene que seguir diciendo lo que
     -- decía.
 
-    saldo_financiado DECIMAL(10, 2)
+    saldo_financiado DECIMAL(15, 2)
         NOT NULL DEFAULT 0.00,
 
     -- Tasa en porcentaje anual. 0 es una venta sin
@@ -427,13 +498,13 @@ CREATE TABLE contratos (
     tasa_interes DECIMAL(6, 3)
         NOT NULL DEFAULT 0.000,
 
-    gastos_administrativos DECIMAL(10, 2)
+    gastos_administrativos DECIMAL(15, 2)
         NOT NULL DEFAULT 0.00,
 
     -- El importe de cada cuota, congelado: el PDF
     -- que se firmó decía esta cifra.
 
-    monto_cuota DECIMAL(10, 2) DEFAULT NULL,
+    monto_cuota DECIMAL(15, 2) DEFAULT NULL,
 
     -- Cómo vencen las cuotas.
 
@@ -464,7 +535,7 @@ CREATE TABLE contratos (
     -- Retención en guaraníes, cuando es importe fijo
     -- y no porcentaje.
 
-    retencion_monto DECIMAL(10, 2)
+    retencion_monto DECIMAL(15, 2)
         NOT NULL DEFAULT 0.00,
 
     -- Fotografía del vehículo al momento de firmar.
@@ -480,7 +551,7 @@ CREATE TABLE contratos (
 
     color VARCHAR(50) DEFAULT NULL,
 
-    precio_lista DECIMAL(10, 2) DEFAULT NULL,
+    precio_lista DECIMAL(15, 2) DEFAULT NULL,
 
     fecha_financiacion DATE DEFAULT NULL,
 
@@ -579,13 +650,13 @@ CREATE TABLE cuotas (
 
     fecha_vencimiento DATE NOT NULL,
 
-    importe DECIMAL(10, 2) NOT NULL,
+    importe DECIMAL(15, 2) NOT NULL,
 
     -- Lo que queda por cobrar de ESTA cuota. No es
     -- el saldo del contrato: cada cuota tiene el
     -- suyo.
 
-    saldo DECIMAL(10, 2) NOT NULL,
+    saldo DECIMAL(15, 2) NOT NULL,
 
     estado VARCHAR(20) NOT NULL DEFAULT 'pendiente',
 
@@ -736,13 +807,13 @@ CREATE TABLE convenios (
     -- guarda: sin los dos importes no se puede
     -- después justificar por qué se cobró menos.
 
-    monto_original DECIMAL(10, 2) NOT NULL,
+    monto_original DECIMAL(15, 2) NOT NULL,
 
-    monto_acordado DECIMAL(10, 2) NOT NULL,
+    monto_acordado DECIMAL(15, 2) NOT NULL,
 
     cantidad_cuotas INT NOT NULL DEFAULT 1,
 
-    monto_cuota DECIMAL(10, 2) DEFAULT NULL,
+    monto_cuota DECIMAL(15, 2) DEFAULT NULL,
 
     fecha_ultimo_cuota DATE DEFAULT NULL,
 
@@ -827,7 +898,7 @@ CREATE TABLE pagos (
 
     fecha DATE NOT NULL,
 
-    importe DECIMAL(10, 2) NOT NULL,
+    importe DECIMAL(15, 2) NOT NULL,
 
     forma VARCHAR(40) NOT NULL,
 
@@ -1020,3 +1091,60 @@ INSERT IGNORE INTO configuracion
     ('financiera_exigir_escribano',
      '0',
      'Si vale 1, la aplicación avisa (no bloquea) cuando se firma una venta financiada, señalando que el contrato puede necesitar escribano público.');
+
+
+
+CREATE TABLE auto_fichas (
+    auto_id INT NOT NULL PRIMARY KEY,
+    combustible VARCHAR(40) NOT NULL DEFAULT '',
+    transmision VARCHAR(40) NOT NULL DEFAULT '',
+    observaciones TEXT,
+    FOREIGN KEY (auto_id) REFERENCES autos(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE auto_fotos (
+    id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    auto_id INT NOT NULL,
+    contenido MEDIUMBLOB NOT NULL,
+    nombre VARCHAR(255) NOT NULL,
+    creado DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX ix_fotos_auto (auto_id),
+    FOREIGN KEY (auto_id) REFERENCES autos(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE unidades_vehiculo (
+    id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    auto_id INT NOT NULL,
+    vin VARCHAR(40) NOT NULL UNIQUE,
+    matricula VARCHAR(30) DEFAULT NULL,
+    kilometraje INT NOT NULL DEFAULT 0,
+    estado ENUM('disponible','reservado','taller') NOT NULL DEFAULT 'disponible',
+    observaciones TEXT,
+    INDEX ix_unidades_auto_estado (auto_id, estado),
+    FOREIGN KEY (auto_id) REFERENCES autos(id) ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+CREATE TABLE venta_unidades (
+    venta_id INT NOT NULL PRIMARY KEY,
+    unidad_id INT NOT NULL UNIQUE,
+    FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE,
+    FOREIGN KEY (unidad_id) REFERENCES unidades_vehiculo(id) ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+CREATE TABLE seguimiento_cobranza (
+    id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    contrato_id INT NOT NULL,
+    usuario_id INT DEFAULT NULL,
+    usuario_nombre VARCHAR(100) NOT NULL,
+    fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    canal ENUM('llamada','whatsapp','presencial','otro') NOT NULL DEFAULT 'llamada',
+    notas TEXT NOT NULL,
+    proximo_contacto DATE DEFAULT NULL,
+    promesa_fecha DATE DEFAULT NULL,
+    promesa_importe DECIMAL(15,2) DEFAULT NULL,
+    completado BOOLEAN NOT NULL DEFAULT FALSE,
+    INDEX ix_seguimiento_agenda (completado, proximo_contacto),
+    INDEX ix_seguimiento_contrato (contrato_id, fecha),
+    FOREIGN KEY (contrato_id) REFERENCES contratos(id) ON DELETE CASCADE,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE SET NULL
+) ENGINE=InnoDB;

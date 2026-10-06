@@ -43,7 +43,7 @@
 import calendar
 
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
 from PySide6.QtCore import QDate
 
@@ -89,12 +89,13 @@ from utils.validaciones import (
 
 from utils.helpers import (
     ajustar_alto_tabla,
+    avisar_error,
     celda,
+    conectar_enter_guardar,
+    configurar_campo_monetario,
     crear_boton_principal,
     crear_boton_secundario,
     crear_tabla,
-    conectar_enter_guardar,
-    avisar_error
 )
 
 from utils.contrato_pdf import (
@@ -104,12 +105,15 @@ from utils.contrato_pdf import (
 
 from utils.moneda import (
     formato_dinero,
-    prefijo_moneda
+    parsear_importe
 )
 
-# El símbolo de la moneda vive en utils.moneda. Aquí
-# no se escribe ninguno: si lo hiciera, cambiar la
-# moneda no tocaría este formulario.
+# El símbolo de la moneda vive en utils/moneda, y con
+# él el SEPARADOR DE MILES y la regla para deshacer un
+# número escrito. Aquí no se escribe ninguno: si lo
+# hiciera, cambiar la moneda no tocaría este
+# formulario, que es lo que pasaba cuando el parser
+# tenía el separador de miles cosido a la coma.
 
 from utils.registro import registrar_error_inesperado
 
@@ -566,13 +570,13 @@ class ContratoForm(QDialog):
 
         self.campo_gastos = QDoubleSpinBox()
 
-        self.campo_gastos.setRange(0, 999999999)
+        # Los gastos administrative son dinero, asi que
+        # van con la moneda: rango, decimales, separador
+        # y prefijo salen de la configuracion.
 
-        self.campo_gastos.setDecimals(2)
-
-        self.campo_gastos.setGroupSeparatorShown(False)
-
-        self.campo_gastos.setPrefix(prefijo_moneda())
+        configurar_campo_monetario(
+            self.campo_gastos
+        )
 
         formulario.addRow(
             "Gastos de administración:", self.campo_gastos
@@ -878,25 +882,38 @@ class ContratoForm(QDialog):
         """
         Un importe escrito a Decimal, o None.
 
-        Admite el separador de miles de la
-        configuración porque el usuario pega
-        números de otros programas: si está pegando
-        un importe, viene con separador.
+        Delega en `parsear_importe()` de utils/moneda.py,
+        que es el UNICO sitio del proyecto donde se
+        deshace un número escrito.
+
+        ------------------------------
+        # POR QUÉ DELEGAR Y NO REPETIR
+        # ------------------------------
+
+        Aquí estaba escrito a mano:
+
+            Decimal(limpio.replace(",", ""))
+
+        con el separador de miles COSIDO A LA COMA. Con
+        la moneda en guaraníes, que usa el punto, el
+        ejemplo que pone el propio formulario
+        ("Gs. 25.000.000") no se parseaba: devolvía None
+        y el mensaje que sale al lado era "tiene que ser
+        un número", que no explicaba nada del fallo real.
+
+        Y el día que alguien cambiara ese `replace` por
+        `replace(".", "")` sin mirar, "25.000.000" se
+        leía como 25: un error silencioso que vale mil
+        veces menos.
+
+        El precio del contrato no es el sitio donde se
+        decide qué es un separador de miles. Lo decide
+        `parsear_importe()`, y lo decide por la FORMA
+        del texto, no por lo que haya escrito quien
+        llama.
         """
 
-        limpio = texto.strip().replace(" ", "")
-
-        if not limpio:
-
-            return None
-
-        try:
-
-            return Decimal(limpio.replace(",", ""))
-
-        except (InvalidOperation, ValueError):
-
-            return None
+        return parsear_importe(texto)
 
     def poner_vencimiento_por_defecto(self):
         """
@@ -1416,10 +1433,27 @@ class ContratoForm(QDialog):
 
             return error
 
-        if (
-            float(anticipo_texto or 0)
-            > float(self.precio)
-        ):
+        # ------------------------------
+        # EL ANTICIPO, COMO NÚMERO
+        # ------------------------------
+        # Se pasa por `leer_importe()` y no por
+        # `float(anticipo_texto)`: el texto puede venir
+        # con separador de miles ("25.000.000", que es
+        # justo lo que invita a escribir el ejemplo del
+        # campo) y `float()` de eso es un ValueError que
+        # sale por fuera de `validar()` y tumba el
+        # formulario con un fallo que no tiene mensaje.
+
+        anticipo = self.leer_importe(anticipo_texto)
+
+        if anticipo is None:
+
+            return (
+                "La entrega inicial tiene que ser un "
+                "número."
+            )
+
+        if anticipo > self.precio:
 
             return (
                 "La entrega inicial no puede ser mayor "
@@ -1428,7 +1462,7 @@ class ContratoForm(QDialog):
 
         if (
             forma_pago == "Contado"
-            and float(anticipo_texto or 0) > 0
+            and anticipo > 0
         ):
 
             return (

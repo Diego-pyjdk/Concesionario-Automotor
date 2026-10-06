@@ -1,3 +1,4 @@
+from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -42,7 +43,8 @@ class MarcaForm(QDialog):
         else:
             self.setWindowTitle("Nueva marca")
 
-        self.setFixedWidth(420)
+        self.resize(420, 480)
+        self.setMinimumWidth(360)
 
         self.crear_interfaz()
 
@@ -62,6 +64,11 @@ class MarcaForm(QDialog):
         formulario.addRow("Nombre:", self.campo_nombre)
 
         layout_principal.addLayout(formulario)
+        self.error_campos = QLabel('')
+        self.error_campos.setObjectName('aviso_error')
+        self.error_campos.setWordWrap(True)
+        self.error_campos.hide()
+        layout_principal.addWidget(self.error_campos)
 
         botones = QHBoxLayout()
 
@@ -102,6 +109,7 @@ class MarcaForm(QDialog):
         self.campo_nombre.setText(nombre)
 
     def guardar(self):
+        self.error_campos.hide()
 
         nombre = self.campo_nombre.text().strip()
 
@@ -117,11 +125,9 @@ class MarcaForm(QDialog):
         ])
 
         if error:
-            QMessageBox.warning(
-                self,
-                "Dato faltante",
-                error
-            )
+            self.error_campos.setText(error)
+            self.error_campos.show()
+            self.campo_nombre.setFocus()
 
             return
 

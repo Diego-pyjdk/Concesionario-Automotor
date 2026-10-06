@@ -56,7 +56,8 @@ class UsuarioForm(QDialog):
         else:
             self.setWindowTitle("Nuevo usuario")
 
-        self.setFixedWidth(480)
+        self.resize(480, 480)
+        self.setMinimumWidth(360)
 
         self.crear_interfaz()
 

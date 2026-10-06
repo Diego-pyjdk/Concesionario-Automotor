@@ -32,6 +32,8 @@ from database.conexion import (
 
 from database.auditoria import registrar_accion
 
+from utils.moneda import formato_dinero
+
 import sesion as modulo_sesion
 
 from permisos import (
@@ -458,7 +460,7 @@ def registrar_pago(
             return (
                 None,
                 "El importe es mayor que el saldo "
-                f"pendiente ({saldo:,.2f})."
+                f"pendiente ({formato_dinero(saldo)})."
             )
 
         # ------------------------------
@@ -552,7 +554,7 @@ def registrar_pago(
     registrar_accion(
         "pagos",
         "PAGO",
-        f"Pago de {importe:,.2f} en la venta "
+        f"Pago de {formato_dinero(importe)} en la venta "
         f"{venta_id} por {forma}"
     )
 
@@ -610,7 +612,7 @@ def eliminar_pago(id_pago):
     registrar_accion(
         "pagos",
         "ELIMINAR",
-        f"Pago de {float(pago['importe']):,.2f} "
+        f"Pago de {formato_dinero(float(pago['importe']))} "
         f"eliminado de la venta {pago['venta_id']}"
     )
 

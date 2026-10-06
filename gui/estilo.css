@@ -869,3 +869,18 @@ QLineEdit#campo_login {
     font-size: 14px;
     padding: 11px 14px;
 }
+
+/* Mejoras de navegación y formularios */
+QLabel#grupo_menu { color:#94a3b8; font-size:11px; font-weight:bold; padding:8px 4px 0; }
+QPushButton#boton_herramienta { background:transparent; color:#cbd5e1; border:1px solid #334155; border-radius:6px; padding:6px; text-align:center; }
+QLabel#estado_carga { color:#64748b; padding:6px; }
+QMenu { background:#ffffff; color:#0f172a; border:1px solid #e2e8f0; padding:5px; }
+QMenu::item { padding:8px 18px; }
+QMenu::item:selected { background:#dbeafe; color:#0f172a; }
+QPlainTextEdit { background:#ffffff; color:#0f172a; border:1px solid #e2e8f0; border-radius:6px; padding:8px; }
+QPushButton:focus, QLineEdit:focus, QComboBox:focus { border:1px solid #2563eb; }
+
+QWidget#menu_sidebar {background:#0f172a;}
+QFrame#sidebar QScrollArea {background:transparent;}
+QFrame#sidebar[contraido="true"] QPushButton#boton_menu,
+QFrame#sidebar[contraido="true"] QPushButton#boton_menu_activo {padding:6px;}

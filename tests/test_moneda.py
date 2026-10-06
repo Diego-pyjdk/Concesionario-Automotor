@@ -20,7 +20,6 @@ from utils import moneda
 from database.configuracion import (
     MONEDA_POR_DEFECTO,
     leer_moneda,
-    obtener_moneda,
     actualizar_moneda
 )
 
@@ -360,44 +359,22 @@ class TestValidacion:
 
 class TestBaseDeDatos:
 
-    def test_sin_ajustes_usa_los_defecto(
-        self, como_administrador
-    ):
-        from database.conexion import obtener_conexion
+    # ------------------------------
+    # LA API ES UNA MONEDA, NO CINCO
+    # ATRIBUTOS
+    # ------------------------------
 
-        conexion = obtener_conexion()
-
-        cursor = conexion.cursor()
-
-        cursor.execute(
-            "DELETE FROM configuracion "
-            "WHERE clave LIKE 'moneda%%'"
-        )
-
-        conexion.commit()
-
-        cursor.close()
-        conexion.close()
-
-        moneda.olvidar_config()
-
-        ajustes = obtener_moneda()
-
-        assert ajustes["codigo"] == "USD"
-        assert moneda.formato_dinero(
-            100
-        ) == "$ 100.00"
-
-    def test_va_y_viene(
-        self, como_administrador
-    ):
+    def test_va_y_viene(self, como_administrador):
         """
         Lo que se guarda es lo que se lee.
+
+        Y al guardar se elige UNA moneda, no cinco
+        atributos sueltos: el símbolo, el formato, los
+        dos separadores y los decimales salen del
+        catálogo.
         """
 
-        ok, motivo = actualizar_moneda(
-            "MXN", "$", "simbolo_pegado", ".", ","
-        )
+        ok, motivo = actualizar_moneda("PYG")
 
         assert ok is True, motivo
 
@@ -405,65 +382,99 @@ class TestBaseDeDatos:
 
         ajustes = leer_moneda()
 
-        assert ajustes["codigo"] == "MXN"
-        assert ajustes["formato"] == "simbolo_pegado"
+        assert ajustes["codigo"] == "PYG"
 
-        # Se guardó con miles "." y decimales ",", así
-        # que el importe sale con el formato europeo.
+        # Todo lo demás vino del catálogo.
 
+        assert ajustes["simbolo"] == "Gs."
+        assert ajustes["formato"] == "simbolo_espacio"
         assert ajustes["separador_miles"] == "."
-        assert ajustes["separador_decimales"] == ","
+        assert ajustes["separador_decimales"] == ""
+        assert ajustes["decimales"] == 0
 
-        assert moneda.formato_dinero(
-            36500
-        ) == "$36.500,00"
+        assert moneda.formato_dinero(36500) == (
+            "Gs. 36.500"
+        )
 
     def test_se_aplica_sin_reiniciar(
         self, como_administrador
     ):
         """
-        Guardar tiene que notarse al momento: si
-        solo se guardara en la base, habría que
-        reiniciar para verlo, y nadie lo haría.
+        Guardar tiene que notarse al momento: si solo
+        se guardara en la base, habría que reiniciar
+        para verlo, y nadie lo haría.
         """
 
-        assert moneda.formato_dinero(
-            100
-        ) == "$ 100.00"
-
-        actualizar_moneda(
-            "GBP", "GBP", "codigo_despues", ",", "."
+        assert moneda.formato_dinero(100) == (
+            "$ 100.00"
         )
 
-        assert moneda.formato_dinero(
-            100
-        ) == "100.00 GBP"
+        actualizar_moneda("PYG")
 
-    def test_rechaza_lo_invalido(
+        assert moneda.formato_dinero(100) == (
+            "Gs. 100"
+        )
+
+        actualizar_moneda("USD")
+
+        assert moneda.formato_dinero(100) == (
+            "$ 100.00"
+        )
+
+    def test_solo_hay_dos_monedas(
         self, como_administrador
     ):
-        antes = moneda.config_actual()
+        """
+        Ni una más, ni una menos.
 
-        ok, motivo = actualizar_moneda(
-            "EUR", "EUR", "simbolo_espacio",
-            ",", ","
-        )
+        Se puede elegir entre PYG y USD. Una moneda
+        inventada se rechaza con un mensaje que dice
+        cuáles hay, que es lo único que le sirve a
+        quien lo ha tecleado mal.
+        """
 
-        assert ok is False
-        assert "no pueden ser el mismo" in motivo
+        assert set(moneda.MONEDAS) == {"PYG", "USD"}
 
-        # Y no ha cambiado nada.
+        for codigo in ("EUR", "MXN", "", "guarani", "1"):
 
-        assert moneda.config_actual() == antes
+            ok, motivo = actualizar_moneda(codigo)
 
-    def test_rechaza_formato_inventado(
+            assert ok is False, f"{codigo!r} se aceptó"
+
+            assert "PYG" in motivo
+
+        # Con espacio o en minúsculas sí se acepta:
+        # quien lo teclea en el desplegable no lo
+        # hace, pero un script o un `.env` pueden.
+
+        assert actualizar_moneda(" pyg ")[0] is True
+
+        assert actualizar_moneda("usd")[0] is True
+
+    def test_no_se_puede_escribir_el_simbolo(
         self, como_administrador
     ):
-        ok, motivo = actualizar_moneda(
-            "EUR", "€", "inventado", ".", ","
+        """
+        El símbolo sale del catálogo.
+
+        Con la firma de un solo argumento es imposible
+        pasar un símbolo, y no es una casualidad: la
+        combinación de "guaraní con dos decimales" o
+        "dólar con el punto de miles" salía de teclear
+        cinco cosas, y ninguna combinación produce un
+        error al guardarlo. Solo un importe que no se
+        puede leer, que se descubre en un contrato.
+        """
+
+        import inspect
+
+        parametros = list(
+            inspect.signature(
+                actualizar_moneda
+            ).parameters
         )
 
-        assert ok is False
+        assert parametros == ["codigo"], parametros
 
     def test_el_vendedor_no_cambia_la_moneda(
         self, como_vendedor
@@ -472,27 +483,16 @@ class TestBaseDeDatos:
 
         with pytest.raises(PermisoDenegado):
 
-            actualizar_moneda(
-                "EUR", "€", "simbolo_espacio", ".", ","
-            )
+            actualizar_moneda("PYG")
 
-    def test_queda_rastro(
-        self, como_administrador
-    ):
+    def test_queda_rastro(self, como_administrador):
         from database.auditoria import obtener_auditoria
 
         antes = len(obtener_auditoria())
 
-        # Un valor que no sea el de por defecto: si
-        # se guardara lo mismo dos veces no habría
-        # ningún cambio que anotar y la comprobación
-        # no probaría nada.
-
         assert moneda.config_actual()["codigo"] == "USD"
 
-        actualizar_moneda(
-            "JPY", "¥", "codigo_despues", ",", "."
-        )
+        actualizar_moneda("PYG")
 
         registros = obtener_auditoria()
 
@@ -505,34 +505,116 @@ class TestBaseDeDatos:
         self, como_administrador
     ):
         """
-        El rastro tiene que decir qué campo se
-        movió: un "Moneda actualizada" a secas no
-        sirve de nada si hay que investigar.
-
-        Cada prueba parte de un estado distinto
-        para que haya algo que anotar: si dos
-        pruebas guardan lo mismo, la segunda no
-        registra ningún cambio y no probaría nada.
+        El rastro tiene que decir qué se movió: un
+        "Moneda actualizada" a secas no sirve para
+        reconstruir qué pasó.
         """
 
         from database.auditoria import obtener_auditoria
 
-        # Primero se pone algo conocido.
+        assert moneda.config_actual()["codigo"] == "USD"
 
-        actualizar_moneda(
-            "USD", "$", "simbolo_espacio", ",", "."
+        actualizar_moneda("PYG")
+
+        registros = obtener_auditoria()
+
+        texto = registros[0][5] or ""
+
+        assert "PYG" in texto
+
+        # Y dice que no se ha convertido nada, que es
+        # lo que alguien va a preguntar después de
+        # cambiar el ajuste.
+
+        assert "No se convierte" in texto
+
+    def test_no_convierte_ningun_importe(
+        self, como_administrador, datos_base
+    ):
+        """
+        Cambiar la moneda no toca ningún valor.
+
+        Es lo que dice el punto 6 del encargo, y es
+        lo más importante: una venta de 25.000
+        dólares sigue siendo 25.000 después de pasar
+        la aplicación a guaraníes. Lo que cambia es
+        cómo se enseña, no cuánto vale.
+        """
+
+        from database.ventas import registrar_venta
+
+        _, id_auto, id_cliente = datos_base
+
+        id_venta, _ = registrar_venta(
+            id_cliente, id_auto, "2026-03-01", 25000.0
         )
 
-        # Y ahora se cambia todo.
+        from database.pagos import saldo_venta
 
-        actualizar_moneda(
-            "CHF", "CHF", "codigo_despues", "'", ","
+        precio_antes, _, saldo_antes = saldo_venta(
+            id_venta
         )
 
-        descripcion = obtener_auditoria()[0][5] or ""
+        actualizar_moneda("PYG")
 
-        assert "codigo" in descripcion
-        assert "simbolo" in descripcion
-        assert "formato" in descripcion
-        assert "separador_miles" in descripcion
-        assert "separador_decimales" in descripcion
+        precio_despues, _, saldo_despues = saldo_venta(
+            id_venta
+        )
+
+        assert precio_antes == precio_despues
+        assert saldo_antes == saldo_despues
+
+        # Y tampoco aparece ningún tipo de cambio por
+        # la puerta de atrás.
+
+        assert "factor" not in (
+            __import__(
+                "database.configuracion",
+                fromlist=["x"]
+            ).__doc__ or ""
+        ).lower()
+
+    def test_la_venta_guarda_su_moneda(
+        self, como_administrador, datos_base
+    ):
+        """
+        Cada venta guarda con qué moneda se hizo.
+
+        Sin esto, una venta es un número suelto que se
+        reescribe cada vez que alguien cambia un ajuste,
+        y el mismo documento dice dos cosas distintas.
+        """
+
+        from database.ventas import (
+            moneda_de_venta,
+            registrar_venta
+        )
+
+        _, id_auto, id_cliente = datos_base
+
+        assert moneda.config_actual()["codigo"] == "USD"
+
+        id_venta, _ = registrar_venta(
+            id_cliente, id_auto, "2026-03-01", 25000.0
+        )
+
+        assert moneda_de_venta(id_venta) == "USD"
+
+        # Ahora se cambia la moneda y se hace otra
+        # venta: cada una con la suya.
+
+        actualizar_moneda("PYG")
+
+        id_otra, _ = registrar_venta(
+            id_cliente, id_auto, "2026-03-02", 2500000.0
+        )
+
+        assert moneda_de_venta(id_venta) == "USD"
+
+        assert moneda_de_venta(id_otra) == "PYG"
+
+        # Y una venta inexistente no revienta.
+
+        assert moneda_de_venta(999999) is None
+
+

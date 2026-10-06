@@ -1,3 +1,25 @@
+# Actualización de esta entrega (2026-10-06)
+
+- Son 17 tablas. `sql/actualizar_mejoras.sql` es aditivo e idempotente para la versión
+  del ZIP de origen; `sql/instalacion_nueva.sql` es para bases inexistentes.
+- Los contratos de columnas de las funciones de listados se conservan.
+- `database/fichas.py` protege lecturas y escrituras. Fotos en BLOB; VIN único.
+- `venta_unidades` vincula venta/unidad dentro de la transacción original de stock.
+  Se bloquea primero autos. Unidades no incrementan stock, y vendidas son inmutables.
+- `seguimiento_cobranza` no representa pagos ni recalcula saldos.
+- `utils/respaldo.py`: snapshot InnoDB, SHA-256 y recuperación en base NUEVA.
+- `gui/trabajos.py`: lecturas con QThreadPool, sesión copiada con ContextVar,
+  descarta resultados al cambiar/cerrar sesión; widgets solo se pintan en el hilo Qt.
+- Las páginas de la ventana principal se crean al abrirse. Listados, Inicio, Cartera
+  y consultas principales de Reportes cargan en segundo plano; formularios y escrituras
+  mantienen confirmaciones y operaciones transaccionales síncronas.
+- La paginación de VistaListado es local; no afirmar que limita la consulta SQL.
+- La ordenación vuelve a pintar filas y acciones: no activar sort de QTableWidget,
+  porque los callbacks antiguos capturan posiciones de fila.
+- Verificaciones adicionales en `tests/test_mejoras.py` y `pruebas_mejoras/`.
+- El contenido siguiente documenta la versión anterior; estas indicaciones prevalecen
+  en los puntos que han cambiado.
+
 # AGENTS.md
 
 ## Comandos
@@ -165,28 +187,131 @@ Un pago es un hecho económico. Si está mal, `pagos.eliminar_pago()` lo borra (
 
 ## La moneda
 
-**`utils/moneda.py` es el único sitio donde vive el símbolo de la moneda.** Antes el `"$ "` estaba escrito dentro de cuatro funciones distintas: `utils/contrato_pdf.py`, dos métodos `dinero()` en la interfaz y otra copia local en `contrato_form.py`. Cuatro copias significa que cambiar la moneda obligaba a tocar cuatro archivos y era fácil olvidar uno.
+**`utils/moneda.py` es el único sitio donde vive la moneda**: el símbolo, los separadores, cuántos decimales se muestran y cómo se junta el símbolo con la cifra. Antes el `"$ "` estaba escrito dentro de cuatro funciones distintas. Cuatro copias significa que cambiar la moneda obligaba a tocar cuatro archivos y era fácil olvidar uno.
 
-Cinco claves en `configuracion`:
+### Las monedas son un CATÁLOGO, no texto libre
 
-| Clave | Por defecto | Para qué |
+Solo hay dos, y cada una trae sus cinco atributos:
+
+| | `PYG` | `USD` |
 |---|---|---|
-| `moneda_codigo` | `USD` | código ISO |
-| `moneda_simbolo` | `$` | símbolo |
-| `moneda_formato` | `simbolo_espacio` | cómo se juntan símbolo e importe |
-| `moneda_separador_miles` | `,` | `1,500.00` o `1.500,00` |
-| `moneda_separador_decimales` | `.` | `1,500.00` o `1.500,00` |
+| Símbolo | `Gs.` | `$` |
+| Formato | `simbolo_espacio` | `simbolo_espacio` |
+| Separador de miles | `.` | `,` |
+| Separador de decimales | *(ninguno)* | `.` |
+| **Decimales** | **0** | **2** |
+| Sale | `Gs. 1.500` | `$ 1,500.00` |
 
-Formatos: `simbolo_espacio`, `simbolo_pegado`, `simbolo_despues`, `codigo_espacio`, `codigo_pegado`, `codigo_despues`.
+Elegir una moneda elige **las cinco cosas a la vez**, y por eso `actualizar_moneda(codigo)` recibe **un solo argumento**. Antes la pantalla de configuración tenía cinco campos (un código, un símbolo y tres desplegables) y se podían combinar en cosas que **no son monedas**: guaraníes con dos decimales, o dólares con el punto de miles. Nada de eso daba un error al guardarlo: salía un importe que no se puede leer, y se descubría **leyendo un contrato**. `test_no_se_puede_escribir_el_simbolo` mira la firma de la función para que no vuelva a crecer.
 
-- Los valores por defecto reproducen **exactamente** el `f"$ {valor:,.2f}"` de antes, byte a byte, incluidos los empates del redondeo en coma flotante. No es casualidad: con los separadores de siempre, `formatear_numero()` devuelve directamente `format(valor, ",.2f")` en vez de armar entero y céntimos a mano. **Armarlos a mano daba dos importes mal escritos** (`0.99` salía `1.99`, `-1500.75` salía `-1501.75`) y resolvía los empates distinto que Python (`0.995`). Solo hace falta cuando los separadores cambian.
-- **El signo va antes de la moneda**: `-$ 1,500.75`, no `$ -1,500.75`. Es una corrección sobre el comportamiento antiguo, no una regresión.
-- **No hay negativo cero**: `-0.004` se redondea a cero y sale `$ 0.00`, no `-$ 0.00`. El signo sale solo si queda alguna cifra detrás.
-- `prefijo_moneda()` es para los campos numéricos (`QDoubleSpinBox.setPrefix`). Con el formato que pone la moneda detrás devuelve cadena vacía: si no, el símbolo saldría dos veces.
-- **Las tablas no llevan símbolo** (nunca lo llevaron y añadirlo ensancha las columnas), pero usan `formatear_numero()` para que los separadores sí sigan la configuración. Si no, el listado diría `36,500.00` mientras el detalle diría `EUR 36.500,00`.
-- La configuración se lee una vez y se cachea en `utils/moneda.py`. `main.py` la calienta al arrancar y `ConfiguracionView` la reaplica al guardar, para que un cambio se vea **sin reiniciar**.
-- `utils/moneda.py` hace un import de `database.configuracion` **dentro** de la función, y solo en el primer fallo de caché. Es la única excepción a "no importes dentro de funciones" de todo el proyecto, y está ahí para no invertir la capa: `gui/` y `database/` usan `utils/`, no al revés. Si la lectura falla se cae a los valores por defecto: **formatear un importe nunca debe ser el motivo de que una pantalla no se abra.**
-- Un ajuste guardado con basura no rompe nada: `_normalizar()` descarta lo que no sirva y `actualizar_moneda()` valida antes de escribir. En particular, **el separador de miles y el de decimales no pueden ser el mismo**: `1.234.56` y `1.234,56` se leerían igual.
+### El guaraní no tiene decimales, y `decimales` es lo que lo hace posible
+
+`moneda_cifras` en `configuracion` es la sexta clave, y sin ella el sistema es estructuralmente de dos decimales: `formatear_numero()` no tiene forma de decir "ninguno".
+
+- El guaraní **no tiene subunitario**: no hay moneda fraccionaria que circule. `Gs. 1.500,00` inventa una precisión que no existe, y un cajero que compare `Gs. 1.500,00` con `Gs. 1.500` tiene dos cifras distintas para lo mismo.
+- El importe **se guarda igual** en la base con dos decimales. Lo que no lleva decimales es la forma de enseñarlo.
+- **Redondear, no truncar**: 1.500,50 en guaraníes son `Gs. 1.501`. Truncar daría 1.500, que son 500 guaraníes **menos** de lo que el cliente debe, y ese medio no se puede pagar porque no existe. El redondeo es a la hora de **mostrar**, nunca al guardar.
+- En `_partes()` el redondeo es **medio arriba** (`int(absoluto * factor + 0.5)`) y no `round()`, que empata al par: `round(1500.5)` es 1500 porque 1500 es par. Eso es correcto en matemáticas y **incorrecto en dinero**.
+
+### Por qué "Gs." y no "₲"
+
+El símbolo oficial es `₲` (U+20B2), y aquí va `Gs.` por dos razones:
+
+1. **Las fuentes base-14 de reportlab no lo tienen.** Los contratos saldrían con un `?` donde debería estar el símbolo, y un contrato con interrogaciones en el importe es un documento que no se puede defender.
+2. **`₲` no está en `cp1252`**, que es lo que hay detrás de `WinAnsiEncoding`. Habría que incrustar una fuente entera para un signo.
+
+`Gs.` es como se escribe de todas formas en un documento de este país.
+
+### Cambiar la moneda NO convierte
+
+**No hay tipo de cambio en ninguna parte del programa, y no se calcula ninguno.** `actualizar_moneda()` solo escribe los ajustes; no toca `ventas`, `contratos`, `cuotas` ni `pagos`.
+
+Un `Gs. 25.000` que en realidad son 25.000 dólares es peor que un importe sin moneda: parece un dato y es mentira.
+
+Por eso **`ventas.moneda` y `contratos.moneda` guardan la moneda de la operación**, y por eso `formato_dinero(valor, moneda=codigo)` existe:
+
+```python
+formato_dinero(25000, moneda=contrato["moneda"])
+```
+
+Un contrato firmado en dólares **se sigue enseñando y se sigue imprimiendo en dólares** aunque la aplicación pase a guaraníes dentro de seis meses. Un documento firmado que al reimprimirse dice otra moneda no sirve para nada.
+
+**En las pantallas se usa un método local, `self.dinero(x)`**, no `formato_dinero(x, moneda=...)` en cada llamada: son diecinueve llamadas en `contrato_detalle_dialog.py` y basta con que **una** se quede sin `moneda=` para que un importe de un contrato firmado salga en la moneda equivocada. Eso no se ve mirando el código de esa línea; se ve en una pantalla. Con el método no se puede olvidar.
+
+`detalle_venta_dialog.py` recibe la moneda como argumento (`DetalleVentaDialog(..., moneda=...)`) y la lee con `moneda_de_venta(id_venta)`, porque **`obtener_ventas()` tiene un contrato de SEIS columnas que se lee por posición en tres sitios**. Meter una séptima no rompe los datos: rompe `pintar_fila`, y el fallo sale al abrir la sección.
+
+### Los importes grandes: `DECIMAL(15,2)`
+
+Las 17 columnas de dinero son `DECIMAL(15, 2)`: **13 cifras enteras**. Antes eran `DECIMAL(10, 2)`, cuyo techo son 99.999.999,99, y en guaraníes eso no da ni para un vehículo normal.
+
+El fallo era **doble**, y por eso importa más que el número:
+
+- `PRECIO_MAXIMO` en `utils/validaciones.py` valía 999.999.999, que es **más de lo que MySQL aceptaba**. En la ventana entre 100.000.000 y 999.999.999 la validación pasaba y la base rechazaba con `Out of range`: el peor sitio posible para descubrirlo. Ahora `PRECIO_MAXIMO` sale de `moneda.MAXIMO_IMPORTE`.
+- Los campos de escritura se quedaban en 999.999.999 y **recortaban el precio en silencio**: se tecleaba 150.000.000 y se guardaba 999.999.999.
+
+### Los campos de escritura: `configurar_campo_monetario()`
+
+Los seis campos de dinero de la aplicación (precio de vehículo, precio de venta, importe de pago, de cobro de cuota, de cobro adelantado y gastos administrativos) se configuran con **un helper**, no con seis `setRange` escritos a mano. Hace tres cosas:
+
+- **Rango**: hasta `moneda.maximo_teclado()`, que es el de `DECIMAL(15,2)`. Un campo que deja escribir más de lo que la base guarda pierde el dato al guardar, **y sin avisar**.
+- **`setGroupSeparatorShown(False)`**: el separador de miles de un `QDoubleSpinBox` lo pone el **locale del sistema**, no la moneda configurada. Sin esto, con guaraníes el campo enseñaba el número con la coma del locale y el punto de la moneda: el mismo número con dos formatos en la misma pantalla.
+- **`setSingleStep(moneda.paso_de_teclado())`**: en guaraníes el salto es de 100.000. Con un salto de 100 hay que pulsarla cientos de veces para pasar de un millón al siguiente.
+
+`decimales_de_teclado()` devuelve **mínimo 1**, aunque la moneda no tenga decimales: un `QDoubleSpinBox` con 0 decimales no deja escribir nada que no sea entero. El redondeo al entero lo hace la pantalla al mostrar, que es donde tiene que pasar.
+
+### Leer un importe escrito: `parsear_importe()`
+
+El único sitio donde se deshace un número escrito. **La regla es una sola: el último separador es el decimal.**
+
+```
+"1.500,00"   el último es la coma  ->  1500.00
+"1,500.00"   el último es el punto ->  1500.00
+```
+
+La versión anterior estaba escrita en **dos** sitios, y en los dos con el separador de miles **cosido a la coma**:
+
+```python
+float(datos[4].replace(",", ""))    # gui/autos_view.py
+Decimal(limpio.replace(",", ""))    # gui/formularios/contrato_form.py
+```
+
+Era el punto más frágil de la aplicación: con guaraníes, `float("25.000.000")` es un `ValueError` y el botón **Editar** de cualquier vehículo de más de 999 reventaba sin mensaje. Y si alguien cambiaba ese `replace` por `replace(".", "")` para arreglarlo sin mirar, `25.000.000` se leía como **25**: un error silencioso que vale mil veces menos, en el precio de un vehículo.
+
+Tres cosas que `parsear_importe()` hace y que hay que mantener:
+
+- **Quita el símbolo y el código por lista negra**, no por lista de letras: `"$"` no es una letra. Con una lista de letras, `"$ 1,500.00"` llegaba entero hasta el final y `Decimal("$ 150000")` reventaba — es decir, **el texto que produce `formato_dinero()` no se podía volver a leer**, que es justo para lo que está la función.
+- **Empieza por la primera cifra**, no por el principio: `"Gs."` deja un punto suelto detrás, y `"1.500"` con un punto delante se leía como millar mal formado en vez de 1500.
+- **Comprueba que los grupos de millares estén bien formados** (`_es_millares()`): `"1.2.3"` sin eso se leía como **123** y `"1.23.456"` como 123.456. Dos números inventados a partir de una errata, y en silencio. Un importe mal leído es peor que uno que no se entiende, porque no avisa de que esté mal.
+
+Devuelve `None` si no se entiende, y **nunca lanza excepciones**: quien llama decide qué hacer. Un parser que revienta obliga a un `try/except` en cada pantalla, y el que se olvide se cae al teclear.
+
+### Lo que se mantiene igual: el dólar
+
+Los valores por defecto reproducen **exactamente** el `f"$ {valor:,.2f}"` de antes, byte a byte, incluidos los empates del redondeo en coma flotante. No es casualidad: con los separadores de siempre y dos decimales, `formatear_numero()` devuelve directamente `format(numero, ",.2f")`.
+
+**Esa comprobación va ANTES de construir nada a mano**, y no es una optimización: es la razón de que con dólares no haya cambiado nada.
+
+```
+format(0.995, ",.2f")  ->  "0.99"
+round(0.995 * 100)     ->  100  ->  "1.00"
+```
+
+Armar el entero y los céntimos por separado resuelve los empates distinto que Python, y eso salía en pantalla como importes mal escritos (`0.99` se veía `1.99`). `TestElDolarNoCambia` fija 24 de esos casos.
+
+### Lo demás que se mantiene
+
+- **El signo va antes de la moneda**: `-$ 1,500.75`, no `$ -1,500.75`.
+- **No hay negativo cero**: `-0.004` sale `$ 0.00` y `Gs. 0`, nunca `-$ 0.00` ni `-Gs. 0`.
+- `prefijo_moneda()` es para los campos numéricos. Con el formato que pone la moneda detrás devuelve cadena vacía: si no, el símbolo saldría dos veces.
+- **Las tablas no llevan símbolo** (nunca lo llevaron y añadirlo ensancha las columnas), pero usan `formatear_numero()` para que los separadores sí sigan la moneda.
+- La configuración se cachea en `utils/moneda.py`. `main.py` la calienta al arrancar y `ConfiguracionView` la reaplica al guardar, para que un cambio se vea **sin reiniciar**.
+- `utils/moneda.py` hace un import de `database.configuracion` **dentro** de la función, y solo en el primer fallo de caché. Es la única excepción a "no importes dentro de funciones" de todo el proyecto, y está ahí para no invertir la capa. Si la lectura falla se cae a los valores por defecto: **formatear un importe nunca debe ser el motivo de que una pantalla no se abra.**
+- **`_ajustes()` normaliza siempre** el diccionario que se le pase, venga de la caché, del catálogo o de una llamada suelta. Antes un `config` con una sola clave reventaba con `KeyError: 'decimales'` al pintar un importe: un formateador al que hay que pasarle las seis claves no sirve para probar un cambio. Y `_ajustes()` **no** llama a `config_actual()` si ya viene un diccionario, así que probar una moneda no cambia la de la aplicación.
+- Un ajuste guardado con basura no rompe nada: `_normalizar()` descarta lo que no sirva y `actualizar_moneda()` valida antes de escribir.
+
+### El `importe en letras` también va con la moneda
+
+`en_letras(valor, decimales)` recibe los decimales de la **moneda**, no los del número. Con guaraníes no hay céntimos que escribir: un recibo que dijera `"Gs. 1.500 con cero/100"` está inventando una precisión que no existe, y en un recibo eso es un problema legal.
 
 ## El orden de las tablas en esquema.sql
 
@@ -342,7 +467,7 @@ Vaciar el campo filtra al instante: sin texto no hay nada que filtrar.
 
 Hay suite de pruebas en `tests/`, con pytest:
 
-- `venv\Scripts\python.exe -m pytest` — **471 pruebas**.
+- `venv\Scripts\python.exe -m pytest` — **505 pruebas**.
 - `venv\Scripts\python.exe verificar_instalacion.py` — entorno y conexión, y **los 52 módulos** que usan PySide6, MySQL o reportlab. Cada uno importa o no: un módulo que falla al importar no da error al arrancar, da error cuando alguien abre esa pantalla. **Al añadir un módulo a `gui/` o `database/`, añádelo también a la lista de `verificar_instalacion.py`**: si no, se importa sin comprobarse.
 
 ### Cómo aísla las pruebas
@@ -413,6 +538,9 @@ Dejarlos escritos es mejor que olvidarlos:
 - **`registrar_pago_adelantado()` comprueba el saldo de la venta antes de abrir la transacción, no dentro.** `registrar_pago()` lo hace con la venta bloqueada (`FOR UPDATE`), que es mejor; aquí hace falta **una sola** transacción para las N imputaciones, y anidar transacciones en la misma conexión no es transaccional en MySQL: un `START TRANSACTION` anula el anterior de forma silenciosa. Se acepta la ventana porque las cuotas van con `FOR UPDATE` en el mismo `SELECT`: si otro cobra a la vez, su `UPDATE` espera al lock. Aun así, la comprobación del saldo de la venta es la única que no está dentro de su propio bloqueo.
 - **`PagoAdelantadoForm` no tiene atajo de teclado para cobrar.** `conectar_enter_guardar()` está puesto en el concepto y el recibo, que son de texto. El importe va en `QDoubleSpinBox`, donde `Return` se lo queda el propio control, y es lo correcto: escribir "30000" y dar `Enter` sin querer pondría el importe de otro cobro.
 - **La tabla de antigüedad no lleva botones** y se construye sin `columna_acciones`. Antes pasaba `-1`, que `crear_tabla()` ignoraba en silencio.
+- **`pagos` no tiene columna `moneda`.** Se usa la del contrato al que pertenece el cobro, y la de la venta cuando el pago es suelto. Es coherente porque un pago no sobrevive a su venta (`pagos.venta_id` es `ON DELETE RESTRICT`), pero si algún día un cobro pudiera cambiar de contrato habría que añadir la columna.
+- **`migracion_monedas.sql` rellena `ventas.moneda` con la moneda que hubiera en el momento de aplicarla**, no con la de cada venta, porque una venta de la que no se guarda la moneda no la tiene: no hay de dónde sacarla. Para una venta real que sí se sabe en qué moneda se hizo, se corrige a mano y una sola vez (`UPDATE ventas SET moneda = 'USD' WHERE id = ...`). Adivinarlo sería peor que dejarlo como está.
+- **La moneda por defecto de `ventas.moneda` y `contratos.moneda` es `'USD'`,** y no la moneda configurada, porque una columna con `DEFAULT` no puede depender de otra tabla. Se escribe al insertar, así que solo importa para lo que ya existía. Si un contrato anterior a esta migración era en otra moneda, hay que corregirlo a mano.
 
 ## El PDF
 

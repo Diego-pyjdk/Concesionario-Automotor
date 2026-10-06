@@ -1,3 +1,5 @@
+from gui.respaldo_dialog import RespaldoDialog
+from utils.helpers import crear_boton_secundario
 # ==========================================
 # CONFIGURACIÓN
 # ==========================================
@@ -23,7 +25,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QSpinBox,
     QComboBox,
-    QLineEdit,
     QTableWidgetItem,
     QPushButton,
     QTabWidget,
@@ -48,8 +49,8 @@ from permisos import (
 )
 
 from utils.moneda import (
-    FORMATOS as FORMATOS_MONEDA,
-    validar_config,
+    MONEDAS,
+    nombre_de,
     formato_dinero
 )
 
@@ -97,6 +98,7 @@ class ConfiguracionView(VistaBase):
         layout.setContentsMargins(30, 25, 30, 25)
         layout.setSpacing(18)
 
+        layout.addWidget(crear_boton_secundario('Copias de seguridad', self.abrir_respaldos))
         self.setLayout(layout)
 
         layout.addWidget(
@@ -165,6 +167,9 @@ class ConfiguracionView(VistaBase):
         layout.addStretch()
 
         self.cargar_datos()
+
+    def abrir_respaldos(self):
+        RespaldoDialog(self).exec()
 
     def crear_panel_simple(self, titulo):
 
@@ -277,11 +282,23 @@ class ConfiguracionView(VistaBase):
         # ------------------------------
         # MONEDA
         # ------------------------------
-        # El símbolo de la moneda no vive en el
-        # código: sale de aquí. Antes estaba escrito
-        # dentro de cuatro funciones distintas y
-        # cambiarlo obligaba a tocar cuatro
-        # archivos.
+        # Un desplegable con las dos monedas, y nada
+        # más. El símbolo, el formato, los dos
+        # separadores y los decimales salen del
+        # catálogo: se elige UNA moneda, no cinco
+        # caracteres sueltos.
+        #
+        # Antes había cinco campos: un código, un
+        # símbolo y tres desplegables. Se podían
+        # combinar en cosas que no son monedas: guaraníes
+        # con dos decimales (el guaraní no tiene
+        # subunitario), o dólares con punto de miles.
+        # Nada de eso da un error al guardarlo; sale un
+        # importe ilegible y se descubre leyendo un
+        # contrato.
+        #
+        # Con el desplegable no se puede. Y nadie
+        # teclea un símbolo.
 
         separador = QLabel("Moneda")
 
@@ -291,75 +308,56 @@ class ConfiguracionView(VistaBase):
 
         formulario = QFormLayout()
 
-        self.campo_moneda_codigo = QLineEdit()
+        self.campo_moneda = QComboBox()
 
-        self.campo_moneda_codigo.setMaxLength(10)
+        for codigo in MONEDAS:
 
-        self.campo_moneda_codigo.setPlaceholderText(
-            "USD"
-        )
-
-        self.campo_moneda_simbolo = QLineEdit()
-
-        self.campo_moneda_simbolo.setMaxLength(5)
-
-        self.campo_moneda_simbolo.setPlaceholderText(
-            "$"
-        )
-
-        self.campo_moneda_formato = QComboBox()
-
-        for formato in FORMATOS_MONEDA:
-
-            self.campo_moneda_formato.addItem(
-                formato
-            )
-
-        self.campo_moneda_miles = QComboBox()
-
-        for separador_texto in (",", ".", " ", "'"):
-
-            self.campo_moneda_miles.addItem(
-                separador_texto
-            )
-
-        self.campo_moneda_decimales = QComboBox()
-
-        for separador_texto in (".", ",", " ' "):
-
-            self.campo_moneda_decimales.addItem(
-                separador_texto
+            self.campo_moneda.addItem(
+                self.etiqueta_de_moneda(codigo),
+                codigo
             )
 
         formulario.addRow(
-            "Código:", self.campo_moneda_codigo
+            "Moneda de la aplicación:",
+            self.campo_moneda
         )
 
-        formulario.addRow(
-            "Símbolo:", self.campo_moneda_simbolo
+        # ------------------------------
+        # LO QUE SE VE
+        # ------------------------------
+        # Se enseña el resultado, no la configuración:
+        # al usuario le importa qué sale en pantalla, no
+        # qué separador hay guardado.
+
+        self.etiqueta_detalle_moneda = QLabel("")
+
+        self.etiqueta_detalle_moneda.setObjectName(
+            "pie"
         )
 
-        formulario.addRow(
-            "Formato:", self.campo_moneda_formato
-        )
-
-        formulario.addRow(
-            "Separador de miles:",
-            self.campo_moneda_miles
-        )
-
-        formulario.addRow(
-            "Separador de decimales:",
-            self.campo_moneda_decimales
-        )
+        self.etiqueta_detalle_moneda.setWordWrap(True)
 
         layout.addLayout(formulario)
+
+        layout.addWidget(
+            self.etiqueta_detalle_moneda
+        )
+
+        # ------------------------------
+        # LOS EJEMPLOS
+        # ------------------------------
+        # Con los importes que de verdad se usan: un
+        # vehículo, un cobro grande y uno enorme. Con un
+        # solo ejemplo de 1.234,50 no se distingue un
+        # formato de otro.
 
         self.etiqueta_ejemplo_moneda = QLabel("")
 
         self.etiqueta_ejemplo_moneda.setObjectName(
-            "pie"
+            "aviso"
         )
+
+        self.etiqueta_ejemplo_moneda.setWordWrap(True)
 
         layout.addWidget(
             self.etiqueta_ejemplo_moneda
@@ -384,27 +382,34 @@ class ConfiguracionView(VistaBase):
 
         layout.addLayout(fila_moneda)
 
-        # Cada cambio enseña cómo quedaría, para
-        # no tener que guardar y cerrar para
-        # comprobar si el formato sirve.
+        # ------------------------------
+        # LO QUE NO PASA
+        # ------------------------------
+        # Avisar de que cambiar la moneda NO convierte
+        # nada es parte de la pantalla, no un comentario
+        # al pie del código: es la duda que va a
+        # aparecer, y si no está escrita aquí alguien la
+        # resuelve como le parezca.
 
-        self.campo_moneda_codigo.textChanged.connect(
-            self.previsualizar_moneda
+        self.aviso_conversion = QLabel(
+            "Cambiar la moneda NO convierte los "
+            "importes ya registrados: no hay tipo de "
+            "cambio. Solo cambia cómo se muestran a "
+            "partir de ahora. Los contratos ya "
+            "firmados siguen con la moneda con la que "
+            "se hicieron."
         )
 
-        self.campo_moneda_simbolo.textChanged.connect(
-            self.previsualizar_moneda
-        )
+        self.aviso_conversion.setObjectName("pie")
 
-        self.campo_moneda_formato.currentTextChanged.connect(
-            self.previsualizar_moneda
-        )
+        self.aviso_conversion.setWordWrap(True)
 
-        self.campo_moneda_miles.currentTextChanged.connect(
-            self.previsualizar_moneda
-        )
+        layout.addWidget(self.aviso_conversion)
 
-        self.campo_moneda_decimales.currentTextChanged.connect(
+        # Cada cambio enseña cómo quedaría, para no
+        # tener que guardar y cerrar para comprobar.
+
+        self.campo_moneda.currentTextChanged.connect(
             self.previsualizar_moneda
         )
 
@@ -416,15 +421,7 @@ class ConfiguracionView(VistaBase):
                 False
             )
 
-            for campo in (
-                self.campo_moneda_codigo,
-                self.campo_moneda_simbolo,
-                self.campo_moneda_formato,
-                self.campo_moneda_miles,
-                self.campo_moneda_decimales
-            ):
-
-                campo.setEnabled(False)
+            self.campo_moneda.setEnabled(False)
 
             self.boton_guardar_moneda.setEnabled(False)
 
@@ -641,78 +638,87 @@ class ConfiguracionView(VistaBase):
 
             return
 
-        # Se rellena con señales bloqueadas: al
-        # asignar cada campo dispara la
-        # previsualización, y así se vería un
-        # ejemplo a medias cinco veces.
+        # Se rellena con la señal bloqueada: al
+        # asignar el elemento dispara la
+        # previsualización, y así se vería un ejemplo
+        # a medias de la moneda ANTERIOR.
 
-        bloqueado = self.campos_moneda()
+        self.campo_moneda.blockSignals(True)
 
         try:
 
-            for campo in bloqueado:
-
-                campo.blockSignals(True)
-
-            self.campo_moneda_codigo.setText(
+            indice = self.campo_moneda.findData(
                 moneda["codigo"]
             )
 
-            self.campo_moneda_simbolo.setText(
-                moneda["simbolo"]
-            )
+            if indice < 0:
 
-            indice = (
-                self.campo_moneda_formato.findText(
-                    moneda["formato"]
-                )
-            )
+                # La moneda guardada no está en el
+                # catálogo. Puede venir de una versión
+                # anterior que admítía cualquier código.
+                # Se añade al desplegable en vez de
+                # quedarse con la primera opción sin
+                # avisar, porque cambiar sin que nadie
+                # lo haya pedido es peor que no poder
+                # elegir.
 
-            if indice >= 0:
-
-                self.campo_moneda_formato.setCurrentIndex(
-                    indice
-                )
-
-            indice = self.campo_moneda_miles.findText(
-                moneda["separador_miles"]
-            )
-
-            if indice >= 0:
-
-                self.campo_moneda_miles.setCurrentIndex(
-                    indice
+                self.campo_moneda.addItem(
+                    self.etiqueta_de_moneda(
+                        moneda["codigo"], conocida=False
+                    ),
+                    moneda["codigo"]
                 )
 
-            indice = (
-                self.campo_moneda_decimales.findText(
-                    moneda["separador_decimales"]
-                )
-            )
+                indice = self.campo_moneda.count() - 1
 
-            if indice >= 0:
-
-                self.campo_moneda_decimales.setCurrentIndex(
-                    indice
-                )
+            self.campo_moneda.setCurrentIndex(indice)
 
         finally:
 
-            for campo in bloqueado:
-
-                campo.blockSignals(False)
+            self.campo_moneda.blockSignals(False)
 
         self.previsualizar_moneda()
 
-    def campos_moneda(self):
+    def etiqueta_de_moneda(self, codigo, conocida=True):
+        """
+        Lo que se lee en el desplegable.
+
+        Lleva el símbolo al lado del nombre porque
+        "Guaraní paraguayo" solo, sin "Gs.", no dice
+        cómo se van a ver los importes; y al revés,
+        el símbolo solo no dice en qué país se está.
+
+        El símbolo oficial del guaraní (₲, U+20B2) no
+        se usa aquí por el mismo motivo que en los PDF:
+        no está en cp1252 y sale como "?" en cualquier
+        fuente base-14. Va "Gs.", que además es como
+        se escribe en un documento de este país.
+        """
+
+        entrada = MONEDAS.get(codigo)
+
+        if not entrada:
+
+            return (
+                f"{codigo} (moneda desconocida)"
+            )
 
         return (
-            self.campo_moneda_codigo,
-            self.campo_moneda_simbolo,
-            self.campo_moneda_formato,
-            self.campo_moneda_miles,
-            self.campo_moneda_decimales
+            f"{entrada['nombre']}  "
+            f"({entrada['simbolo']} {codigo})"
         )
+
+    def moneda_elegida(self):
+        """
+        El código de la moneda seleccionada ahora
+        mismo.
+        """
+
+        return self.campo_moneda.currentData()
+
+    def campos_moneda(self):
+
+        return (self.campo_moneda,)
 
     def comprobar_conexion(self):
 
@@ -856,69 +862,84 @@ class ConfiguracionView(VistaBase):
     # MONEDA
     # =============================
 
-    def moneda_del_formulario(self):
-        """
-        Lo que hay ahora mismo en los campos, como
-        diccionario. Se usa para validar y para la
-        vista previa.
-        """
-
-        return {
-            "codigo": (
-                self.campo_moneda_codigo.text().strip()
-            ),
-            "simbolo": (
-                self.campo_moneda_simbolo.text().strip()
-            ),
-            "formato": (
-                self.campo_moneda_formato.currentText()
-            ),
-            "separador_miles": (
-                self.campo_moneda_miles.currentText()
-            ),
-            "separador_decimales": (
-                self.campo_moneda_decimales.currentText()
-            )
-        }
-
     def previsualizar_moneda(self):
         """
-        Muestra cómo quedarían los importes con lo
-        que hay tecleado, sin guardar nada.
+        Muestra cómo quedarían los importes con la
+        moneda elegida, sin guardar nada.
 
-        Si la configuración no es válida, avisa en
-        vez de enseñar un importe que no podría
-        leerse.
+        ------------------------------
+        # CON QUÉ IMPORTES
+        # ------------------------------
+
+        Con los que de verdad aparecen en la
+        aplicación: un vehículo de gama media, un cobro
+        grande y uno enorme. Un solo ejemplo de
+        "1.234,50" no distingue un formato de otro, y
+        el punto es justo el que se quiere ver: si el
+        separador de miles aparece donde toca y los
+        decimales donde toca.
+
+        El último importa porque es el que rompe: con
+        separadores de siempre, 1.500.000,00 cabe en
+        una columna y 150.000.000 no, y el recorte se
+        ve aquí y no en la tabla de clientes.
         """
 
-        propuesta = self.moneda_del_formulario()
+        codigo = self.moneda_elegida()
 
-        valido, mensaje = validar_config(propuesta)
-
-        if not valido:
-
-            self.etiqueta_ejemplo_moneda.setText(
-                "Así no se puede: " + mensaje
-            )
+        if not codigo:
 
             return
 
-        self.etiqueta_ejemplo_moneda.setText(
-            "Se vería así: "
-            + formato_dinero(1234.5, propuesta)
-            + "  ·  un importe grande: "
-            + formato_dinero(9876543.21, propuesta)
+        self.etiqueta_detalle_moneda.setText(
+            f"{nombre_de(codigo)} ({codigo})  ·  "
+            f"se muestran "
+            f"{self.decimales_de(codigo)} decimales"
+            + (
+                "  ·  no usa decimales"
+                if self.decimales_de(codigo) == 0
+                else ""
+            )
         )
+
+        ejemplos = [
+            ("un vehículo", 45000000),
+            ("un cobro", 2500000),
+            ("una venta grande", 150000000)
+        ]
+
+        partes = []
+
+        for etiqueta, valor in ejemplos:
+
+            partes.append(
+                f"{etiqueta}: "
+                f"{formato_dinero(valor, moneda=codigo)}"
+            )
+
+        self.etiqueta_ejemplo_moneda.setText(
+            "Se vería así  —  "
+            + "  ·  ".join(partes)
+        )
+
+    def decimales_de(self, codigo):
+        """
+        Cuántos decimales muestra una moneda.
+        """
+
+        entrada = MONEDAS.get(codigo)
+
+        if not entrada:
+
+            return 2
+
+        return entrada["decimales"]
 
     def guardar_moneda(self):
 
-        propuesta = self.moneda_del_formulario()
+        codigo = self.moneda_elegida()
 
-        valido, mensaje = validar_config(propuesta)
-
-        if not valido:
-
-            self.mostrar_ajuste_error(mensaje)
+        if not codigo:
 
             return
 
@@ -926,11 +947,7 @@ class ConfiguracionView(VistaBase):
 
         resultado = self.proteger(
             actualizar_moneda,
-            propuesta["codigo"],
-            propuesta["simbolo"],
-            propuesta["formato"],
-            propuesta["separador_miles"],
-            propuesta["separador_decimales"]
+            codigo
         )
 
         if resultado is None:
@@ -950,9 +967,10 @@ class ConfiguracionView(VistaBase):
         # aplicación cambian sin reiniciar.
 
         self.mostrar_exito(
-            f"Moneda actualizada. Ahora los "
-            f"importes se ven como "
-            f"{formato_dinero(1234.5)}."
+            f"Ahora la aplicación trabaja en "
+            f"{nombre_de(codigo)}. Los importes se "
+            f"ven como {formato_dinero(1500000)}. "
+            "No se ha convertido ningún valor."
         )
 
         self.cargar_ajustes()

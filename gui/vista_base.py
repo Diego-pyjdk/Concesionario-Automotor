@@ -1,3 +1,4 @@
+from gui.trabajos import Trabajos
 # ==========================================
 # VISTA CON MANEJO DE ERRORES
 # ==========================================
@@ -37,8 +38,33 @@ class VistaBase(QWidget):
     cualquier llamada a la base de datos.
     """
 
+    diferir_carga = False
+
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.carga_asincrona = VistaBase.diferir_carga
+        self.trabajos = Trabajos(self)
+        self.cache_consultas = None
+        self.version_lote = 0
+
+    def consultar_async(self, operacion, terminado):
+        return self.trabajos.ejecutar(operacion, terminado, self.mostrar_error)
+
+    def consultar_lote(self, consultas, pintar):
+        self.version_lote += 1
+        version = self.version_lote
+        def obtener():
+            return {(operacion, repr(args), repr(sorted(kwargs.items()))): operacion(*args, **kwargs)
+                    for operacion, args, kwargs in consultas}
+        def recibido(datos):
+            if version != self.version_lote:
+                return
+            self.cache_consultas = datos
+            try:
+                pintar()
+            finally:
+                self.cache_consultas = None
+        return self.consultar_async(obtener, recibido)
 
     # ------------------------------
     # EJECUCIÓN PROTEGIDA
@@ -53,6 +79,11 @@ class VistaBase(QWidget):
         que el código que la llama no debe asumir
         un resultado.
         """
+
+        if self.cache_consultas is not None:
+            clave = (operacion, repr(args), repr(sorted(kwargs.items())))
+            if clave in self.cache_consultas:
+                return self.cache_consultas[clave]
 
         try:
 
@@ -103,7 +134,11 @@ class VistaBase(QWidget):
         Muestra un error controlado.
         """
 
-        self.mostrar_mensaje_error(error.mensaje)
+        if isinstance(error, ErrorSistema):
+            self.mostrar_mensaje_error(error.mensaje)
+        else:
+            registrar_error_inesperado(error)
+            self.mostrar_error_inesperado()
 
     def mostrar_mensaje_error(self, mensaje):
         """

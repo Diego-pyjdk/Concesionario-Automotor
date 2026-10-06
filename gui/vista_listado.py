@@ -1,3 +1,7 @@
+from PySide6.QtCore import Qt
+from functools import cmp_to_key
+from decimal import Decimal
+from PySide6.QtWidgets import QComboBox
 # ==========================================
 # VISTA DE LISTADO
 # ==========================================
@@ -107,9 +111,14 @@ class VistaListado(VistaBase):
 
         self.con_busqueda = con_busqueda
 
+        self.pagina_actual = 0
+        self.tamano_pagina = 50
+        self.orden_columna = None
+        self.orden_inverso = False
+        self.generacion_consulta = 0
         self.crear_interfaz()
-
-        self.cargar_datos()
+        if not self.carga_asincrona:
+            self.cargar_datos()
 
     # =============================
     # INTERFAZ
@@ -165,9 +174,24 @@ class VistaListado(VistaBase):
             self.estado_vacio
         )
 
-        layout_principal.addWidget(
-            self.contenedor
-        )
+        layout_principal.addWidget(self.contenedor)
+        self.tabla.horizontalHeader().sectionClicked.connect(self.ordenar_por)
+        self.tabla.horizontalHeader().setSectionsClickable(True)
+        pie = QHBoxLayout()
+        self.boton_anterior = crear_boton_principal('Anterior', lambda: self.cambiar_pagina(-1))
+        self.boton_siguiente = crear_boton_principal('Siguiente', lambda: self.cambiar_pagina(1))
+        self.etiqueta_pagina = QLabel('')
+        self.combo_tamano = QComboBox()
+        self.combo_tamano.addItems(['25','50','100'])
+        self.combo_tamano.setCurrentText('50')
+        self.combo_tamano.currentTextChanged.connect(self.cambiar_tamano)
+        pie.addWidget(self.boton_anterior)
+        pie.addWidget(self.etiqueta_pagina)
+        pie.addWidget(self.boton_siguiente)
+        pie.addStretch()
+        pie.addWidget(QLabel('Filas por página'))
+        pie.addWidget(self.combo_tamano)
+        layout_principal.addLayout(pie)
 
     def crear_encabezado(self):
 
@@ -256,47 +280,68 @@ class VistaListado(VistaBase):
         la hacen las cinco vistas.
         """
 
-        resultado = self.proteger(
-            operacion,
-            *args
-        )
-
-        if resultado is None:
-
-            return
-
-        self.mostrar_filas(resultado)
+        self.generacion_consulta += 1
+        generacion = self.generacion_consulta
+        def terminado(resultado):
+            if generacion == self.generacion_consulta:
+                self.mostrar_filas(resultado)
+        if self.carga_asincrona:
+            self.etiqueta_conteo.setText('Cargando…')
+            self.consultar_async(lambda: operacion(*args), terminado)
+        else:
+            resultado = self.proteger(operacion, *args)
+            if resultado is not None:
+                terminado(resultado)
 
     def mostrar_filas(self, filas):
-        """
-        Vuelca las filas en la tabla y decide si
-        se ve la tabla o el estado vacío.
+        self.filas = list(filas)
+        self.pagina_actual = 0
+        self.pintar_pagina()
 
-        Las subclases llaman a esto desde
-        cargar_datos() y buscar().
-        """
-
-        self.filas = filas
-
-        vacio = len(filas) == 0
-
-        self.contenedor.setCurrentIndex(
-            1 if vacio else 0
-        )
-
-        if vacio:
-
-            self.etiqueta_conteo.setText("")
-
-            return
-
-        self.tabla.setRowCount(len(filas))
-
-        for fila, registro in enumerate(filas):
-
+    def pintar_pagina(self):
+        filas = list(getattr(self, 'filas', []))
+        if self.orden_columna is not None:
+            indice = self.orden_columna
+            def clave(registro):
+                valor = registro[indice]
+                if valor is None:
+                    return (0, '')
+                if isinstance(valor, (int, float, Decimal)):
+                    return (1, Decimal(str(valor)))
+                return (2, str(valor).casefold())
+            filas.sort(key=clave, reverse=self.orden_inverso)
+        paginas = max(1, (len(filas) + self.tamano_pagina - 1) // self.tamano_pagina)
+        self.pagina_actual = min(self.pagina_actual, paginas - 1)
+        inicio = self.pagina_actual * self.tamano_pagina
+        visibles = filas[inicio:inicio + self.tamano_pagina]
+        self.contenedor.setCurrentIndex(0 if visibles else 1)
+        self.tabla.setRowCount(0)
+        self.tabla.setRowCount(len(visibles))
+        for fila, registro in enumerate(visibles):
             self.pintar_fila(fila, registro)
+        self.etiqueta_conteo.setText(f'{len(filas)} registro(s)')
+        self.etiqueta_pagina.setText(f'{self.pagina_actual + 1} / {paginas}')
+        self.boton_anterior.setEnabled(self.pagina_actual > 0)
+        self.boton_siguiente.setEnabled(self.pagina_actual + 1 < paginas)
 
-        self.actualizar_conteo()
+    def cambiar_pagina(self, desplazamiento):
+        self.pagina_actual = max(0, self.pagina_actual + desplazamiento)
+        self.pintar_pagina()
+
+    def cambiar_tamano(self, texto):
+        self.tamano_pagina = int(texto)
+        self.pagina_actual = 0
+        self.pintar_pagina()
+
+    def ordenar_por(self, columna):
+        if columna == self.columna_acciones:
+            return
+        self.orden_inverso = not self.orden_inverso if columna == self.orden_columna else False
+        self.orden_columna = columna
+        self.tabla.horizontalHeader().setSortIndicatorShown(True)
+        self.tabla.horizontalHeader().setSortIndicator(columna, Qt.DescendingOrder if self.orden_inverso else Qt.AscendingOrder)
+        self.pagina_actual = 0
+        self.pintar_pagina()
 
     def pintar_fila(self, fila, registro):
         """

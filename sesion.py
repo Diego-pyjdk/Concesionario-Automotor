@@ -1,3 +1,8 @@
+from contextvars import ContextVar
+
+contexto_trabajo = ContextVar("sesion_trabajo", default=None)
+generacion = 0
+
 # ==========================================
 # CONTEXTO DE SESIÓN
 # ==========================================
@@ -99,24 +104,28 @@ _sesion = Sesion()
 
 
 def iniciar_sesion(datos):
+    global generacion
+    generacion += 1
     _sesion.iniciar(datos)
 
 
 def cerrar_sesion():
+    global generacion
+    generacion += 1
     _sesion.cerrar()
 
 
 def obtener_sesion():
-    return _sesion
+    return contexto_trabajo.get() or _sesion
 
 
 def hay_sesion():
-    return _sesion.activa
+    return obtener_sesion().activa
 
 
 def usuario_actual():
-    return _sesion.nombre_usuario
+    return obtener_sesion().nombre_usuario
 
 
 def rol_actual():
-    return _sesion.rol
+    return obtener_sesion().rol

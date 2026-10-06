@@ -482,7 +482,7 @@ def limpiar_tablas(base_de_prueba):
 
 
     for tabla in (
-
+        "seguimiento_cobranza", "venta_unidades", "auto_fotos", "auto_fichas", "unidades_vehiculo",
         "auditoria",
 
         "pagos",

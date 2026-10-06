@@ -20,6 +20,11 @@
 
 import re
 
+# El tope de los importes sale de la moneda, que es
+# donde vive el de la base. Ver la nota de
+# PRECIO_MAXIMO mas abajo.
+from utils.moneda import MAXIMO_IMPORTE
+
 
 # ==========================================
 # LIMITES
@@ -37,7 +42,34 @@ STOCK_MAXIMO = 999999
 
 PRECIO_MINIMO = 0.0
 
-PRECIO_MAXIMO = 999999999.0
+# ------------------------------
+# EL TOPE VIENE DE LA MONEDA
+# ------------------------------
+# Antes estaba aquí escrito a mano, y era
+# 999_999_999.0: un número que no correspondía a
+# nada.
+#
+# Dos cosas estaban mal con él:
+#
+#   - El 999.999.999 es MÁS de lo que la base
+#     aceptaba. Las columnas eran DECIMAL(10,2), cuyo
+#     techo son 99.999.999,99. Así que entre
+#     100.000.000 y 999.999.999 la validación daba el
+#     importe por bueno y MySQL lo rechazaba con "Out
+#     of range": el peor sitio posible para
+#     descubrirlo, porque la validación ya había
+#     pasado.
+#
+#   - Y en guaraníes el problema no era el tope
+#     extremo: era que un vehículo normal cuesta
+#     30-100 millones, así que 999.999.999 estaba a un
+#     paso del caso corriente, no del raro.
+#
+# El tope sale ahora de `utils.moneda.MAXIMO_IMPORTE`,
+# que es el de DECIMAL(15,2): 13 cifras enteras. Un
+# campo y una base que dicen lo mismo, que es lo
+# único que hace que "no se puede" signifique algo.
+PRECIO_MAXIMO = float(MAXIMO_IMPORTE)
 
 
 # ==========================================

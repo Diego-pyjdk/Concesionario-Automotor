@@ -35,9 +35,7 @@ from decimal import Decimal
 
 from database.conexion import obtener_conexion
 
-RAIZ = pathlib.Path(
-    "C:/Users/Tucan-Programmer/Desktop/concesionario"
-)
+RAIZ = pathlib.Path(__file__).resolve().parents[1]
 
 ESQUEMA = RAIZ / "database" / "esquema.sql"
 
@@ -45,12 +43,15 @@ TABLAS = [
     "marcas", "autos", "clientes", "usuarios",
     "ventas", "configuracion", "auditoria",
     "contratos", "cuotas", "garantias",
-    "convenios", "pagos"
+    "convenios", "pagos", "auto_fichas", "auto_fotos", "unidades_vehiculo", "venta_unidades", "seguimiento_cobranza"
 ]
 
 # De quién depende cada tabla.
 
 DEPENDENCIAS = {
+    "auto_fichas": {"autos"}, "auto_fotos": {"autos"},
+    "unidades_vehiculo": {"autos"}, "venta_unidades": {"ventas", "unidades_vehiculo"},
+    "seguimiento_cobranza": {"contratos", "usuarios"},
     "autos": {"marcas"},
     "ventas": {"clientes", "autos", "usuarios"},
     "auditoria": {"usuarios"},

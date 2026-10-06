@@ -1,0 +1,48 @@
+# Archivos de esta actualización
+
+- `restaurar_respaldo.py`
+- `main.py`
+- `INSTRUCCIONES_ACTUALIZACION.md`
+- `README.md`
+- `AGENTS.md`
+- `verificar_instalacion.py`
+- `sesion.py`
+- `gui/dashboard_view.py`
+- `gui/cartera_view.py`
+- `gui/fichas_dialog.py`
+- `gui/trabajos.py`
+- `gui/autos_view.py`
+- `gui/respaldo_dialog.py`
+- `gui/vista_listado.py`
+- `gui/tema.py`
+- `gui/clientes_view.py`
+- `gui/diagnostico.py`
+- `gui/estilo.css`
+- `gui/ventana_principal.py`
+- `gui/reportes_view.py`
+- `gui/configuracion_view.py`
+- `gui/vista_base.py`
+- `gui/iconos.py`
+- `gui/seguimiento_dialog.py`
+- `sql/instalacion_nueva.sql`
+- `sql/actualizar_mejoras.sql`
+- `utils/contrato_pdf.py`
+- `utils/respaldo.py`
+- `utils/helpers.py`
+- `pruebas_mejoras/test_interfaz_mejoras.py`
+- `tests/test_mejoras.py`
+- `tests/conftest.py`
+- `tests/test_instalacion.py`
+- `tests/test_main.py`
+- `database/fichas.py`
+- `database/ventas.py`
+- `database/autos.py`
+- `database/esquema.sql`
+- `database/contratos.py`
+- `gui/formularios/venta_form.py`
+- `gui/formularios/cliente_form.py`
+- `gui/formularios/auto_form.py`
+- `gui/formularios/usuario_form.py`
+- `gui/formularios/marca_form.py`
+
+Para instalación y uso consulta `INSTRUCCIONES_ACTUALIZACION.md`.

@@ -26,6 +26,7 @@ from utils.helpers import (
     crear_boton_principal,
     crear_boton_secundario,
     conectar_enter_guardar,
+    configurar_campo_monetario,
     avisar_error
 )
 
@@ -44,7 +45,8 @@ class AutoForm(QDialog):
         else:
             self.setWindowTitle("Nuevo vehículo")
 
-        self.setFixedWidth(450)
+        self.resize(450, 480)
+        self.setMinimumWidth(360)
 
         self.crear_interfaz()
         self.cargar_marcas()
@@ -69,8 +71,18 @@ class AutoForm(QDialog):
         self.campo_anio.setValue(2026)
 
         self.campo_precio = QDoubleSpinBox()
-        self.campo_precio.setRange(0, 999999999)
-        self.campo_precio.setDecimals(2)
+
+        # Rango, decimales y separador salen de la
+        # moneda configurada. El tope anterior
+        # (999.999.999) estaba por debajo de lo que
+        # cabe en la base, y en guaraníes un vehiculo
+        # normal cuesta 30-100 millones: el campo
+        # recortaba el precio en silencio.
+
+        configurar_campo_monetario(
+            self.campo_precio,
+            con_prefijo=False
+        )
 
         self.campo_color = QLineEdit()
         self.campo_color.setPlaceholderText("Ej: Blanco")
@@ -86,6 +98,11 @@ class AutoForm(QDialog):
         formulario.addRow("Stock:", self.campo_stock)
 
         layout_principal.addLayout(formulario)
+        self.error_campos = QLabel('')
+        self.error_campos.setObjectName('aviso_error')
+        self.error_campos.setWordWrap(True)
+        self.error_campos.hide()
+        layout_principal.addWidget(self.error_campos)
 
         # ------------------------------
         # AVISO DE STOCK
@@ -163,6 +180,7 @@ class AutoForm(QDialog):
             )
 
     def guardar(self):
+        self.error_campos.hide()
 
         modelo = self.campo_modelo.text().strip()
 
@@ -174,11 +192,9 @@ class AutoForm(QDialog):
         ])
 
         if error:
-            QMessageBox.warning(
-                self,
-                "Dato faltante",
-                error
-            )
+            self.error_campos.setText(error)
+            self.error_campos.show()
+            self.campo_modelo.setFocus()
 
             return
 

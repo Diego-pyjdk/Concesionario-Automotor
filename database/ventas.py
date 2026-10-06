@@ -1,8 +1,11 @@
+from database.conexion import conexiones_libres
 import mysql.connector
 
 from database.conexion import obtener_conexion
 
 from database.auditoria import registrar_accion
+
+from utils.moneda import formato_dinero
 
 import sesion as modulo_sesion
 
@@ -18,6 +21,59 @@ from permisos import (
 
 
 # =============================
+
+def moneda_de_venta(id_venta):
+    """
+    La moneda con la que se registró una venta, o None.
+
+    ------------------------------
+    # POR QUÉ UNA CONSULTA SUELTA Y
+    # NO UNA COLUMNA MÁS EN
+    # obtener_ventas()
+    # ------------------------------
+
+    Porque `obtener_ventas()` tiene un contrato de seis
+    columnas que está escrito en tres sitios más
+    (`VentasView.pintar_fila`, `VentasView.ver_venta` y
+    el ancho de columna), y todas lo leen por posición.
+    Añadir una séptima no rompe la vista: rompe el
+    `pintar_fila` que compara contra el número de
+    columnas, y el fallo sale en pantalla, no en los
+    datos.
+
+    Y la moneda solo hace falta en un sitio: al abrir
+    el detalle de la venta. Una consulta de más ahí,
+    y las 6 columnas siguen siendo 6 para todos los
+    demás.
+
+    Devuelve el código tal cual está, aunque no sea una
+    moneda del catálogo: es un dato, no una opinión.
+    Si no existe la venta, None.
+    """
+
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+
+    cursor.execute(
+        """
+        SELECT moneda
+        FROM ventas
+        WHERE id = %s
+        """,
+        (id_venta,)
+    )
+
+    fila = cursor.fetchone()
+
+    cursor.close()
+    conexion.close()
+
+    if not fila:
+
+        return None
+
+    return fila[0]
+
 
 def obtener_ventas(desde=None, hasta=None, texto=None):
     """
@@ -198,8 +254,11 @@ def contar_ventas_de_auto(id_auto):
 
 # =============================
 
+@conexiones_libres
 @requiere_permiso(REGISTRAR_VENTAS)
-def registrar_venta(cliente_id, auto_id, fecha, precio):
+def registrar_venta(
+    cliente_id, auto_id, fecha, precio, moneda=None, unidad_id=None
+):
     """
     Registra una venta dentro de una transacción.
 
@@ -210,6 +269,21 @@ def registrar_venta(cliente_id, auto_id, fecha, precio):
       1. Bloquear el vehículo y verificar stock.
       2. Insertar la venta.
       3. Descontar una unidad.
+
+    moneda es el código con el que se hace ESTA venta,
+    no una conversión: el importe es el que es y se
+    guarda dicho en la moneda que diga. Si no se pasa,
+    es la que hay configurada ahora, que es lo que
+    quiere decir una venta que alguien está
+    registrar en este momento.
+
+    Se guarda por lo mismo que `contratos.moneda`: una
+    venta de 25.000 dólares tiene que seguir siendo una
+    venta de 25.000 dólares cuando el concesionario
+    cambie la moneda de la aplicación dentro de seis
+    meses. Sin esta columna, el mismo documento pasa a
+    decir "Gs. 25.000" sin que nadie haya convertido
+    nada, y las dos cosas son falsas a la vez.
 
     Devuelve (True, "") o (False, mensaje).
     """
@@ -253,6 +327,26 @@ def registrar_venta(cliente_id, auto_id, fecha, precio):
                 "El vehículo seleccionado no tiene stock."
             )
 
+        cursor.execute("""SELECT COUNT(*) FROM unidades_vehiculo u
+            LEFT JOIN venta_unidades vu ON vu.unidad_id=u.id
+            WHERE u.auto_id=%s AND vu.venta_id IS NULL""", (auto_id,))
+        identificadas = cursor.fetchone()[0]
+        if unidad_id is not None:
+            cursor.execute("""SELECT u.estado,vu.venta_id FROM unidades_vehiculo u
+                LEFT JOIN venta_unidades vu ON vu.unidad_id=u.id
+                WHERE u.id=%s AND u.auto_id=%s FOR UPDATE""", (unidad_id, auto_id))
+            unidad = cursor.fetchone()
+            if not unidad or unidad[0] != 'disponible' or unidad[1] is not None:
+                conexion.rollback()
+                cursor.close()
+                conexion.close()
+                return False, "La unidad seleccionada ya no está disponible."
+        elif identificadas >= stock:
+            conexion.rollback()
+            cursor.close()
+            conexion.close()
+            return False, "Selecciona una unidad disponible por su chasis/VIN."
+
         # ------------------------------
         # 2. INSERTAR VENTA
         # ------------------------------
@@ -267,6 +361,20 @@ def registrar_venta(cliente_id, auto_id, fecha, precio):
 
         usuario = modulo_sesion.obtener_sesion()
 
+        # ------------------------------
+        # 2b. LA MONEDA DE LA VENTA
+        # ------------------------------
+        # Se escribe AHORA, con la moneda que hay en
+        # este momento, y no se vuelve a tocar. Es la
+        # cifra que se acaba de pactar en una moneda
+        # concreta: eso es un hecho, no un ajuste.
+
+        if not moneda:
+
+            from utils.moneda import config_actual
+
+            moneda = config_actual()["codigo"]
+
         consulta_venta = """
             INSERT INTO ventas
             (
@@ -275,9 +383,10 @@ def registrar_venta(cliente_id, auto_id, fecha, precio):
                 usuario_id,
                 usuario_nombre,
                 fecha,
-                precio
+                precio,
+                moneda
             )
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
 
         cursor.execute(
@@ -288,7 +397,8 @@ def registrar_venta(cliente_id, auto_id, fecha, precio):
                 usuario.id_usuario,
                 usuario.nombre_usuario,
                 fecha,
-                precio
+                precio,
+                str(moneda)
             )
         )
 
@@ -306,6 +416,10 @@ def registrar_venta(cliente_id, auto_id, fecha, precio):
 
         cursor.execute(consulta_stock, (auto_id,))
 
+        if unidad_id is not None:
+            cursor.execute("INSERT INTO venta_unidades (venta_id,unidad_id) VALUES (%s,%s)",
+                           (id_venta, unidad_id))
+
         conexion.commit()
 
         # Se registra DESPUÉS del commit: si la
@@ -315,7 +429,7 @@ def registrar_venta(cliente_id, auto_id, fecha, precio):
         registrar_accion(
             "ventas",
             "VENTA",
-            f"Venta por {float(precio):,.2f} del "
+            f"Venta por {formato_dinero(float(precio))} del "
             f"vehículo {auto_id} a cliente {cliente_id}"
         )
 
@@ -349,6 +463,7 @@ def registrar_venta(cliente_id, auto_id, fecha, precio):
 
 # =============================
 
+@conexiones_libres
 @requiere_permiso(GESTIONAR_VENTAS)
 def eliminar_venta(id_venta):
     """

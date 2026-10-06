@@ -8,10 +8,6 @@
 # porque tiene estado propio: al registrar un pago
 # hay que recargar la tabla y recalcular el saldo
 # sin cerrar y reabrir el diálogo.
-#
-# Un pago no se edita: se borra y se vuelve a
-# registrar. Por eso el botón de cada fila es
-# "Borrar", no "Editar".
 # ==========================================
 
 
@@ -68,9 +64,14 @@ class DetalleVentaDialog(QDialog):
         self,
         parent,
         venta,
-        funcion_saldo
+        funcion_saldo,
+        moneda=None
     ):
         super().__init__(parent)
+
+        # La moneda con la que se registró ESTA venta.
+
+        self.moneda = moneda
 
         # La venta llega como tupla de obtener_ventas:
         # id, fecha, cliente, vehiculo, precio,
@@ -190,7 +191,7 @@ class DetalleVentaDialog(QDialog):
 
         self.etiqueta_datos.setText(
             f"<b>Venta {self.id_venta}</b> &nbsp;&nbsp; "
-            f"<b>{formato_dinero(self.precio)}</b><br>"
+            f"<b>{self.dinero(self.precio)}</b><br>"
             f"Fecha: {self.fecha}<br>"
             f"Cliente: {self.cliente}<br>"
             f"Vehículo: {self.vehiculo}<br>"
@@ -222,8 +223,8 @@ class DetalleVentaDialog(QDialog):
 
             self.etiqueta_saldo.setText(
                 f"<b>Saldada.</b> "
-                f"{formato_dinero(pagado)} cobrados de "
-                f"{formato_dinero(precio)}."
+                f"{self.dinero(pagado)} cobrados de "
+                f"{self.dinero(precio)}."
             )
 
             self.boton_pago.setEnabled(False)
@@ -240,8 +241,8 @@ class DetalleVentaDialog(QDialog):
 
         self.etiqueta_saldo.setText(
             f"<b>Pendiente "
-            f"{formato_dinero(pendiente)}</b> de "
-            f"{formato_dinero(precio)} "
+            f"{self.dinero(pendiente)}</b> de "
+            f"{self.dinero(precio)} "
             f"({porcentaje:.0f}% cobrado)"
         )
 
@@ -278,7 +279,7 @@ class DetalleVentaDialog(QDialog):
             self.tabla.setItem(
                 numero, 1,
                 celda(
-                    formato_dinero(importe),
+                    self.dinero(importe),
                     centrar=True
                 )
             )
@@ -362,6 +363,29 @@ class DetalleVentaDialog(QDialog):
         ).exec()
 
         self.cargar()
+
+    def dinero(self, valor):
+        """
+        Un importe de ESTA venta, con la moneda de
+        ESTA venta.
+
+        ------------------------------
+        # POR QUÉ NO LA MONEDA EN CURSO
+        # ------------------------------
+
+        Porque una venta de 25.000 dólares tiene que
+        seguir enseñándose en dólares aunque el
+        concesionario haya pasado la aplicación a
+        guaraníes. El importe no se ha convertido, así
+        que ponerlo con otro símbolo sería mentir dos
+        veces: sobre la cifra y sobre lo que significa.
+
+        Sin moneda (una venta anterior a la migración, o
+        una que se pasa a mano) se usa la que hay ahora,
+        que es lo mejor que se puede hacer sin inventar.
+        """
+
+        return formato_dinero(valor, moneda=self.moneda)
 
     def borrar_pago(self, id_pago):
 
