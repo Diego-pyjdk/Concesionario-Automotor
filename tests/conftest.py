@@ -68,6 +68,8 @@
 
 import os
 
+import tempfile
+
 import sys
 
 
@@ -127,6 +129,98 @@ cargar_env()
 
 
 os.environ["DB_NAME"] = BASE_PRUEBA
+
+
+
+# ==========================================
+
+
+
+# LOS PDF DE LAS PRUEBAS NO CAEN EN
+
+
+
+# DOCUMENTOS/
+
+
+
+# ==========================================
+
+
+
+# ------------------------------
+
+
+
+# POR QUE
+
+
+
+# ------------------------------
+
+
+
+# `utils/contrato_pdf.py` y `utils/recibo_pdf.py`
+
+
+
+# leen esta variable para decidir donde guardan el
+
+
+
+# documento. Aqui se apunta a una carpeta temporal.
+
+
+
+#
+
+
+
+# Sin esto, cada prueba que genera un contrato deja
+
+
+
+# `documentos/contratos/contrato_CTR-2026-00001.pdf`
+
+
+
+# en la carpeta del usuario, y como la base de pruebas
+
+
+
+# reinicia los ids en 1, el nombre CHOCA con el de un
+
+
+
+# contrato real: una prueba puede pisar un documento
+
+
+
+# de verdad sin que nadie se entere.
+
+
+
+#
+
+
+
+# Esta aqui y no en una fixture porque la carpeta se
+
+
+
+# lee AL IMPORTAR el modulo, y para entonces las
+
+
+
+# fixtures todavia no han corrido.
+
+
+
+os.environ["CONCESIONARIO_DOCUMENTOS"] = (
+
+    tempfile.mkdtemp(prefix="documentos_pruebas_")
+
+)
 
 
 
@@ -1283,6 +1377,99 @@ def ruta_pdf_temporal(tmp_path):
 
 
     return str(tmp_path)
+
+
+# ==========================================
+# LA MONEDA VUELVE A SU VALOR SEMBRADO
+# ==========================================
+
+@pytest.fixture(autouse=True)
+def moneda_en_su_valor_sembrado(base_de_prueba):
+
+    """
+    ------------------------------
+    # POR QUE ESTA AQUI
+    ------------------------------
+    `limpiar_tablas` NO vacia la tabla
+    `configuracion`, y con razon: los ajustes
+    financieros se siembran una vez y hay
+    pruebas que los necesitan.
+
+    El problema es que `tests/test_moneda.py`
+    cambia la moneda a PYG y solo una prueba
+    la devuelve a USD. Al terminar ese
+    archivo la base de pruebas queda en PYG, y
+    `test_instalacion.py::test_la_moneda_esta_
+    sembrada` falla si se ejecuta despues.
+
+    Con el orden alfabetico normal pasaba por
+    casualidad: `test_instalacion` va antes que
+    `test_moneda`. Invirtiendo el orden de los
+    archivos, la prueba falla. Eso es justo lo
+    que AGENTS.md prohibe: apoyarse en el orden
+    en vez de en el codigo.
+
+    ------------------------------
+    # COMO LO ARREGLA
+    ------------------------------
+    Borra las claves de moneda antes de cada
+    prueba, con lo que `leer_moneda()` vuelve a
+    `MONEDA_POR_DEFECTO` (USD) y se comprueba de
+    verdad lo que se instala desde cero.
+
+    Se borran las filas en vez de llamar a
+    `actualizar_moneda()` porque esa funcion
+    escribe una entrada de auditoria por llamada:
+    con una por prueba la tabla de auditoria se
+    llenaria de ruido, y hay pruebas que cuentan
+    sus registros.
+    """
+
+    from database.configuracion import (
+        CLAVE_MONEDA_CODIGO,
+        CLAVE_MONEDA_SIMBOLO,
+        CLAVE_MONEDA_FORMATO,
+        CLAVE_MONEDA_MILES,
+        CLAVE_MONEDA_DECIMALES,
+        CLAVE_MONEDA_CIFRAS,
+        leer_moneda
+    )
+
+    import utils.moneda as modulo_moneda
+
+    conexion = _conectar(base_de_prueba)
+
+    cursor = conexion.cursor()
+
+    cursor.execute(
+        "DELETE FROM configuracion WHERE clave IN "
+        "(%s, %s, %s, %s, %s, %s)",
+        (
+            CLAVE_MONEDA_CODIGO,
+            CLAVE_MONEDA_SIMBOLO,
+            CLAVE_MONEDA_FORMATO,
+            CLAVE_MONEDA_MILES,
+            CLAVE_MONEDA_DECIMALES,
+            CLAVE_MONEDA_CIFRAS
+        )
+    )
+
+    conexion.commit()
+
+    cursor.close()
+
+    conexion.close()
+
+    # La cache de `utils/moneda.py` se lee una vez y se
+    # queda: sin refrescarla, la prueba veria la moneda
+    # que dejo la anterior.
+
+    modulo_moneda.aplicar_config(leer_moneda())
+
+    yield
+
+    modulo_moneda.aplicar_config(leer_moneda())
+
 
 
 

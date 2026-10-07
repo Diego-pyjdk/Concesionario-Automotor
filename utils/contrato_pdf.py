@@ -69,7 +69,36 @@ RAIZ = os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))
 )
 
-CARPETA = os.path.join(RAIZ, "documentos", "contratos")
+# ------------------------------
+# DÓNDE SE GUARDAN LOS DOCUMENTOS
+# ------------------------------
+#
+# `CONCESIONARIO_DOCUMENTOS` mueve la carpeta entera.
+# Sin ella, el comportamiento es el de siempre:
+# `documentos/` junto al proyecto.
+#
+# Está por un motivo concreto: las pruebas generan
+# PDF con los MIMOS nombres que llevaría un contrato
+# real (`contrato_CTR-2026-00001.pdf`), y al escribirse
+# en `documentos/` se mezclaban con los documentos del
+# usuario. Un número de contrato de prueba podía pisar
+# un documento de verdad, y una prueba de interfaz
+# deja restos en la carpeta que el usuario abre.
+#
+# Apuntándola a una carpeta temporal, cada prueba
+# sigue haciendo lo mismo de verdad (escribir un PDF
+# donde sea) sin tocar nada del proyecto.
+#
+# `ruta_relativa()` NO se toca a propósito: lo que se
+# guarda en la base es siempre `documentos/...`, que es
+# lo que sirve si el proyecto se mueve de carpeta.
+
+CARPETA_BASE = os.environ.get(
+    "CONCESIONARIO_DOCUMENTOS",
+    os.path.join(RAIZ, "documentos")
+)
+
+CARPETA = os.path.join(CARPETA_BASE, "contratos")
 
 NO_REGISTRADO = "No registrado"
 

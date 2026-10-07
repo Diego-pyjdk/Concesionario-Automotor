@@ -91,7 +91,27 @@ RAIZ = os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))
 )
 
-CARPETA = os.path.join(RAIZ, "documentos", "recibos")
+# ------------------------------
+# LA MISMA REGLA QUE EL CONTRATO
+# ------------------------------
+#
+# `CONCESIONARIO_DOCUMENTOS` mueve la carpeta de los
+# documentos; sin ella, `documentos/recibos` junto al
+# proyecto.
+#
+# El motivo está en `utils/contrato_pdf.py`: un recibo
+# de prueba se llama igual que uno real y, escrito en
+# la carpeta del usuario, se lo pisa. Los dos modulos
+# leen la MISMA variable a proposito, para que no
+# pueda pasar que los contratos vayan a un sitio y
+# los recibos a otro.
+
+CARPETA_BASE = os.environ.get(
+    "CONCESIONARIO_DOCUMENTOS",
+    os.path.join(RAIZ, "documentos")
+)
+
+CARPETA = os.path.join(CARPETA_BASE, "recibos")
 
 # Media carta: un recibo grande no cabe en un cajero
 # y se doblega de una manera que acaba con la

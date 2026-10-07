@@ -60,9 +60,33 @@ def entorno(monkeypatch,app):
     monkeypatch.setattr('permisos.registrar_intento',lambda *args: None)
     for nombre in ('warning','critical','information','question'):
         monkeypatch.setattr(QMessageBox,nombre,lambda *args,**kwargs: QMessageBox.No)
+    # ------------------------------
+    # EL TEMA DEL USUARIO NO SE TOCA
+    # ------------------------------
+    # `aplicar_tema()` guarda la preferencia en
+    # QSettings, que en Windows es el registro del
+    # sistema. Varias de estas pruebas cambian el
+    # tema para comprobar los dos aspects, y sin
+    # esto la aplicacion del usuario amanecia al
+    # dia siguiente en claro porque una prueba
+    # termino en `aplicar_tema(False)`.
+    #
+    # Se guarda lo que habia y se vuelve a poner.
+    from gui.tema import AJUSTES
+    tema_previo = AJUSTES.value('tema')
+    menu_previo = AJUSTES.value('menu_contraido')
     yield
     sesion.cerrar_sesion()
     VistaBase.diferir_carga = False
+    if tema_previo is None:
+        AJUSTES.remove('tema')
+    else:
+        AJUSTES.setValue('tema',tema_previo)
+    if menu_previo is None:
+        AJUSTES.remove('menu_contraido')
+    else:
+        AJUSTES.setValue('menu_contraido',menu_previo)
+    AJUSTES.sync()
 
 
 def test_codificacion_respaldo_exacta():
