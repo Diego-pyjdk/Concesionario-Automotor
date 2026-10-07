@@ -595,8 +595,6 @@ def _sumar_meses(fecha, meses, dia_referencia):
 
     return date(anio, mes, min(dia_referencia, ultimo))
 
-    return fechas
-
 
 def _repartir(total, cantidad):
     """

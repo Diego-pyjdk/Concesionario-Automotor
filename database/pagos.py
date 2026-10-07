@@ -193,6 +193,27 @@ def saldo_venta(venta_id):
     pagos a Python para sumarlos aquí: es una ida
     y vuelta menos y no depende de que elDecimal
     se sume igual en los dos sitios.
+
+    ------------------------------
+    # SOLO CUENTA LO CONVALIDADO
+    # ------------------------------
+
+    Un pago NO se borra: se anula. Un anulado sigue
+    en la tabla con estado='anulado', y si la suma no
+    lo excluye el saldo de la venta BAJA igual: la
+    venta aparece pagada con dinero que se anuló,
+    que es justo la cifra que el cajero mira antes de
+    decir que el auto está pagado.
+
+    El filtro va en el SUM y no en el WHERE a proposito:
+    un WHERE sobre la tabla unida convierte el LEFT
+    JOIN en uno interior y las ventas sin pagos
+    desaparecerian en vez de salir con pagado 0.
+
+    Todas las demas sumas de la aplicacion (cobranza,
+    garantias, fichas, financiera) filtran por estado.
+    Esta era la unica que se habia quedado fuera, y por
+    eso no se veia al comparar dos pantallas.
     """
 
     conexion = obtener_conexion()
@@ -201,7 +222,15 @@ def saldo_venta(venta_id):
     consulta = """
         SELECT
             ventas.precio AS precio,
-            COALESCE(SUM(pagos.importe), 0) AS pagado
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN pagos.estado = 'convalidado'
+                        THEN pagos.importe
+                    END
+                ),
+                0
+            ) AS pagado
         FROM ventas
         LEFT JOIN pagos
             ON pagos.venta_id = ventas.id
@@ -576,6 +605,25 @@ def eliminar_pago(id_pago):
     consciente.
 
     Devuelve (True, "") o (False, motivo).
+
+    ------------------------------
+    # UN PAGO DE CUOTA NO SE BORRA
+    # ------------------------------
+
+    Si el pago esta imputado a una cuota, al pagarlo
+    se le resto el importe a `cuotas.saldo`. Borrar la
+    fila sin devolver ese importe deja la cuota con un
+    saldo mas bajo que la realidad: el dinero se fue y
+    el sistema sigue creyendo que el cliente lo debe.
+
+    Por eso aqui se rechaza y se manda al camino
+    correcto, que es `anular_pago()` en
+    database/financiera.py: ese si devuelve el importe
+    a la cuota y recalcula su estado, dentro de la
+    misma transaccion.
+
+    Borrar queda para los pagos sueltos (cuota_id
+    NULL), donde no hay nada que reconciliar.
     """
 
     conexion = obtener_conexion()
@@ -583,7 +631,7 @@ def eliminar_pago(id_pago):
 
     cursor.execute(
         """
-        SELECT id, venta_id, importe, forma
+        SELECT id, venta_id, importe, forma, cuota_id
         FROM pagos
         WHERE id = %s
         """,
@@ -598,6 +646,21 @@ def eliminar_pago(id_pago):
         conexion.close()
 
         return (False, "El pago indicado no existe.")
+
+    if pago["cuota_id"]:
+
+        cursor.close()
+        conexion.close()
+
+        return (
+            False,
+            "Este pago está asignado a una cuota y no "
+            "se puede borrar: al pagarlo se le quitó el "
+            "importe del saldo de esa cuota. Anúlalo "
+            "desde el detalle del contrato, que es la "
+            "forma de devolverlo sin descuadrar el "
+            "cronograma."
+        )
 
     cursor.execute(
         "DELETE FROM pagos WHERE id = %s",
@@ -631,9 +694,19 @@ def obtener_cobros(desde=None, hasta=None):
     hubo. No aplica permiso: es una lectura y los
     dos roles leen. Quien quiera verlo en pantalla
     lo decide la vista.
+
+    ------------------------------
+    # LO ANULADO NO ES COBRO
+    # ------------------------------
+
+    El filtro de estado va SIEMPRE, aunque no se
+    pida ningun periodo: un reporte que suma lo
+    anulado enseña dinero que nunca se cobró, y es
+    la clase de cifra que se descubre comparando el
+    banco.
     """
 
-    condiciones = []
+    condiciones = ["estado = 'convalidado'"]
     valores = []
 
     if desde:

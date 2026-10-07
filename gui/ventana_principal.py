@@ -428,7 +428,29 @@ class VentanaPrincipal(QMainWindow):
         """
         Cambia de sección y refresca los datos de
         la página destino.
+
+        ------------------------------
+        # UN ÍNDICE QUE NO EXISTE
+        # ------------------------------
+
+        `definiciones` tiene una entrada por sección
+        VISIBLE, no una por sección del catálogo: el
+        vendedor tiene seis y el administrador once. Un
+        índice fuera de rango no es un botón que se
+        pueda pulsar, así que de la interfaz no llega;
+        pero sí llega de un atajo, de un enlace
+        interno o de un estado restaurado, y entonces
+        `definiciones[indice]` es un IndexError que
+        tumba la ventana entera.
+
+        No se avisa porque no hay a quién avisarle: es
+        una llamada que no debería existir, y lo que
+        tiene que hacer es no romper nada.
         """
+
+        if indice < 0 or indice >= len(self.definiciones):
+
+            return
 
         if indice not in self.paginas_creadas:
             clase, texto = self.definiciones[indice]

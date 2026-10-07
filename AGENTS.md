@@ -1,3 +1,47 @@
+# Revision total (2026-10-07)
+
+- **El error de imprimir**: `elegir_recibo()` construia la lista en `textos` y
+  buscaba en `texts`. NameError con dos recibos, y sin errores con uno solo, que
+  es lo que lo hacia parecer aleatorio. Pruebas: `tests/test_revision_general.py`.
+- `generar_contrato(contrato, ruta=None, cuotas=None)`: **quien llama pasa las
+  cuotas**, igual que `generar_recibo()`. `utils/` no abre conexiones. Sin ellas
+  el documento sale sin la tabla de vencimientos, que es lo de un contado.
+- **El PDF de un contrato financiado imprime tasa, gastos, retencion,
+  periodicidad, primer vencimiento, clausulas y cronograma.** Antes solo
+  imprimia anticipo e importe de cuota: el cliente firmaba sin saber la tasa ni
+  el detalle de vencimientos. Un contado NO inventa una "tasa 0 %".
+- `bloque_cronograma()` usa `repeatRows=1` y NO `KeepTogether`: con treinta
+  cuotas la tabla tiene que partirse entre hojas, y `KeepTogether` la empujaria
+  entera a una hoja donde no cabe.
+- Un porcentaje sale con `_numero()`: `tasa_interes` es DECIMAL(6,3) y sin eso
+  el documento dice "8,000 % anual", que es un numero que no existe.
+- `historia.extend(bloques)`, nunca `append(bloques)`: reportlab no aplana
+  listas anidadas y revienta con `'list' object has no attribute
+  'getKeepWithNext'`.
+- **`saldo_venta()` cuenta solo `estado = 'convalidado'`.** Un pago no se borra,
+  se anula, y el anulado sigue en la tabla. Sin el filtro en el `SUM` (no en el
+  `WHERE`, que convertiria el LEFT JOIN en interior) una venta aparecia pagada
+  con un cobro anulado. Todas las demas sumas ya filtraban; esta era la unica
+  que se habia quedado fuera.
+- `obtener_cobros()` filtra por estado aunque no se pida periodo: un reporte que
+  suma lo anulado ensena dinero que nunca se cobro.
+- `eliminar_pago()` **rechaza borrar un pago imputado a una cuota** y dice que
+  lo anule. Al pagar se le quito el importe de `cuotas.saldo` y nadie se lo
+  devuelve: el dinero se iba y el sistema seguia creyendo que el cliente lo
+  debia. Los pagos sueltos (`cuota_id` NULL) si se borran.
+- `contrato_bloqueado_por(id)` comprueba `cuotas`, `pagos`, `garantias` y
+  `convenios` antes de borrar, y el motivo dice cuantos hay y que hacer. Las
+  cuatro estan en ON DELETE RESTRICT y sin la comprobacion MySQL saltaba la
+  excepcion: la pantalla veia un error de base de datos en vez de una frase.
+- `navegar(indice)` sale si el indice esta fuera de rango: `definiciones` tiene
+  una entrada por seccion **visible** (6 vendedor, 11 administrador).
+- `Trabajos` se anula cuando la vista se destruye, y `Tarea.run()` no gruja si
+  el que pidio el dato ya no existe: cambiar de seccion con una consulta en
+  vuelo daba "Signal source has been deleted" desde un hilo.
+- `pruebas_mejoras/` fija `DB_NAME = pruebas_concesionario` en su propio
+  modulo. Al vivir fuera de `tests/` no carga el conftest que aisla la base, y
+  una prueba de interfaz que pulsa un boton alcanza la base de trabajo.
+
 # Fondo interior (2026-10-07)
 - VentanaPrincipal reutiliza PanelFotografia del login y el mismo recurso.
 - actualizar_fondo_luxury adapta la superficie translúcida a claro/oscuro.

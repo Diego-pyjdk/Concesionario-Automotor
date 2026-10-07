@@ -166,6 +166,147 @@ def formato_dinero(valor, moneda=None):
     return _moneda.formato_dinero(valor, moneda=moneda)
 
 
+def _numero(valor):
+    """
+    Un porcentaje sin ceros de relleno: 8 en vez de
+    8.000, y 8.5 en vez de 8,500.
+
+    `tasa_interes` y `retencion` son DECIMAL(6,3): el
+    3 es la parte decimal, no un millar. Sin esto el
+    documento dice "tasa 8,000 % anual" y eso es un
+    número que no existe.
+    """
+
+    try:
+
+        numero = float(valor)
+
+    except (TypeError, ValueError):
+
+        return str(valor)
+
+    if numero == int(numero):
+
+        return str(int(numero))
+
+    return f"{numero:g}"
+
+
+def bloque_cronograma(contrato, cuotas, estilos):
+    """
+    La tabla de vencimientos.
+
+    ------------------------------
+    # POR QUÉ ES UNA TABLA Y NO UN PÁRRAFO
+    # ------------------------------
+
+    Con doce cuotas, un párrafo es un bloque de texto
+    que el cliente no puede ni leer ni comparar. En
+    columnas, el cliente mira la columna de importe y
+    comprueba que lo que suma es lo que debe.
+
+    ------------------------------
+    # POR QUÉ SE PARTE SI NO CABE
+    # ------------------------------
+
+    Una tabla de treinta cuotas no cabe en el resto de
+    una página. Sin `repeatRows` la cabecera se queda
+    en la primera hoja y el resto son filas sin
+    título; con ella, cada hoja repite "Cuota,
+    Vencimiento, Importe" y el cliente no se pierde.
+
+    `KeepTogether` NO se usa: obligaría a la tabla a
+    saltar entera a la hoja siguiente, y con treinta
+    cuotas no entraría en ninguna.
+    """
+
+    filas = [[
+        Paragraph("Cuota", estilos["etiqueta"]),
+        Paragraph("Vencimiento", estilos["etiqueta"]),
+        Paragraph("Importe", estilos["etiqueta"])
+    ]]
+
+    total = 0.0
+
+    for cuota in cuotas:
+
+        importe = cuota.get("importe")
+
+        try:
+
+            total += float(importe or 0)
+
+        except (TypeError, ValueError):
+
+            pass
+
+        filas.append([
+            Paragraph(
+                str(cuota.get("numero") or ""),
+                estilos["valor"]
+            ),
+            Paragraph(
+                formato_fecha(cuota.get("fecha_vencimiento")),
+                estilos["valor"]
+            ),
+            Paragraph(
+                formato_dinero(
+                    importe,
+                    moneda=contrato.get("moneda")
+                ),
+                estilos["valor"]
+            )
+        ])
+
+    filas.append([
+        Paragraph("Total:", estilos["etiqueta"]),
+        "",
+        Paragraph(
+            formato_dinero(
+                total,
+                moneda=contrato.get("moneda")
+            ),
+            estilos["valor"]
+        )
+    ])
+
+    tabla = Table(
+        filas,
+        colWidths=[
+            ANCHO_UTIL / 6,
+            ANCHO_UTIL / 3,
+            ANCHO_UTIL / 2
+        ],
+        repeatRows=1
+    )
+
+    estilo = TableStyle(
+        [
+            ("GRID", (0, 0), (-1, -1), 0.4, GRIS),
+            ("BACKGROUND", (0, 0), (-1, 0), GRIS_SUAVE),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN", (2, 1), (2, -1), "RIGHT"),
+            ("ALIGN", (0, -1), (-1, -1), "RIGHT"),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6)
+        ]
+    )
+
+    tabla.setStyle(estilo)
+
+    bloques = [
+        tabla_una_columna(
+            "CRONOGRAMA DE PAGOS", estilos
+        ),
+        Spacer(1, 5),
+        tabla
+    ]
+
+    return bloques
+
+
 def cuota_importe(contrato):
     """
     Importe de cada cuota.
@@ -227,6 +368,7 @@ def color_estado(estado):
 TINTA = colors.HexColor("#0f172a")
 
 GRIS = colors.HexColor("#64748b")
+GRIS_SUAVE = colors.HexColor("#e2e8f0")
 
 CLARO = colors.HexColor("#e2e8f0")
 
@@ -898,13 +1040,29 @@ def construir_documento(ruta, contrato):
 
 # ==========================================
 
-def generar_contrato(contrato, ruta=None):
+def generar_contrato(contrato, ruta=None, cuotas=None):
     """
     Crea el PDF del contrato.
 
     contrato: una fila de database/contratos.py
     ruta: dónde guardarlo. Por defecto
           documentos/contratos/contrato_<n>.pdf
+    cuotas: el cronograma, una fila de
+            database/financiera.py::obtener_cuotas
+
+    ------------------------------
+    # LAS CUOTAS LAS PASA QUIEN LLAMA
+    # ------------------------------
+
+    Igual que `generar_recibo()`, que recibe sus
+    datos en vez de ir a la base: `utils/` no abre
+    conexiones, y un PDF que va a un archivo del
+    cliente no puede depender de que MySQL esté
+    despierto en ese instante.
+
+    Sin `cuotas` el documento sale sin la tabla de
+    vencimientos, que es lo que corresponde a un
+    contrato al contado.
 
     Devuelve la ruta del archivo.
     """
@@ -928,14 +1086,14 @@ def generar_contrato(contrato, ruta=None):
 
     documento = construir_documento(destino, contrato)
 
-    historia = construir_historia(contrato, estilos)
+    historia = construir_historia(contrato, estilos, cuotas)
 
     documento.build(historia)
 
     return destino
 
 
-def construir_historia(contrato, estilos):
+def construir_historia(contrato, estilos, cuotas=None):
     """
     Los bloques del documento, en orden.
 
@@ -943,6 +1101,22 @@ def construir_historia(contrato, estilos):
     generar_contrato() porque es la parte que
     describe el documento: el resto es papel,
     márgenes y marco.
+
+    ------------------------------
+    # LO QUE NO FALTA
+    # ------------------------------
+
+    Un contrato financiado que no dice la tasa ni
+    el detalle de las cuotas no es un documento que
+    el cliente pueda firmar: no sabe qué está
+    aceptando. La tasa, los gastos, la retención y
+    el cronograma están en la base desde que se
+    firmó, así que aquí se leen y se imprimen.
+
+    Las cláusulas van antes del cronograma porque
+    son las condiciones que rigen el pago, y el
+    cronograma es la consecuencia de esas
+    condiciones.
     """
 
     historia = []
@@ -1068,6 +1242,88 @@ def construir_historia(contrato, estilos):
             )
         ))
 
+    # ------------------------------
+    # LAS CONDICIONES DE LA FINANCIACIÓN
+    # ------------------------------
+    #
+    # Solo las que el contrato tiene de verdad: en un
+    # contado no se inventa una tasa del 0 % que no
+    # existe. Cada una se imprime si hay algo que
+    # decir, y no se deja un hueco vacío que parezca
+    # un dato olvidado.
+
+    saldo_financiado = contrato.get("saldo_financiado")
+
+    if saldo_financiado:
+
+        filas_pago.append((
+            "Saldo financiado:",
+            formato_dinero(
+                saldo_financiado,
+                moneda=contrato.get("moneda")
+            )
+        ))
+
+    tasa = contrato.get("tasa_interes")
+
+    if tasa:
+
+        filas_pago.append((
+            "Tasa de interés:",
+            f"{_numero(tasa)} % anual"
+        ))
+
+    gastos = contrato.get("gastos_administrativos")
+
+    if gastos:
+
+        filas_pago.append((
+            "Gastos administrativos:",
+            formato_dinero(
+                gastos,
+                moneda=contrato.get("moneda")
+            )
+        ))
+
+    retencion = contrato.get("retencion")
+
+    if retencion:
+
+        filas_pago.append((
+            "Retención:",
+            f"{_numero(retencion)} %"
+            + (
+                " ("
+                + formato_dinero(
+                    contrato.get("retencion_monto") or 0,
+                    moneda=contrato.get("moneda")
+                )
+                + ")"
+                if contrato.get("retencion_monto") else ""
+            )
+        ))
+
+    if contrato.get("periodicidad"):
+
+        filas_pago.append((
+            "Periodicidad de los pagos:",
+            contrato["periodicidad"]
+        ))
+
+    if contrato.get("primer_vencimiento"):
+
+        filas_pago.append((
+            "Primer vencimiento:",
+            formato_fecha(contrato["primer_vencimiento"])
+        ))
+
+    if contrato.get("dia_vencimiento"):
+
+        filas_pago.append((
+            "Día de vencimiento:",
+            f"el {contrato['dia_vencimiento']} de cada mes"
+        ))
+
     bloque_pago.append(
         tabla_datos(filas_pago, estilos)
     )
@@ -1079,6 +1335,65 @@ def construir_historia(contrato, estilos):
     historia.append(
         KeepTogether(bloque_pago)
     )
+
+    # ------------------------------
+    # CLÁUSULAS
+    # ------------------------------
+    #
+    # Son las condiciones que escribió el
+    # administrador al firmar. Se imprimen enteras
+    # y con su escapado: un "&" en una cláusula
+    # rompe el párrafo de reportlab y sale un
+    # documento que no se puede defender.
+
+    clausulas = (contrato.get("clausulas") or "").strip()
+
+    if clausulas:
+
+        historia.append(
+            tabla_una_columna(
+                "CLÁUSULAS", estilos
+            )
+        )
+
+        historia.append(
+            Spacer(1, 5)
+        )
+
+        historia.append(
+            Paragraph(
+                escapar(clausulas).replace(
+                    "\n",
+                    "<br/>"
+                ),
+                estilos["parrafo"]
+            )
+        )
+
+    # ------------------------------
+    # CRONOGRAMA DE PAGOS
+    # ------------------------------
+    #
+    # La tabla de vencimientos es la parte que le
+    # dice al cliente cuánto y cuándo, cuota a cuota.
+    # Sin ella, un contrato financiado es media
+    # información: dice "12 cuotas" y nada más.
+
+    if cuotas:
+
+        # `extend` y no `append`: el bloque son tres
+        # flowables (titulo, hueco y tabla) y reportlab
+        # no aplana listas anidadas. Con `append`
+        # revienta con "'list' object has no attribute
+        # 'getKeepWithNext'".
+
+        historia.extend(
+            bloque_cronograma(
+                contrato,
+                cuotas,
+                estilos
+            )
+        )
 
     # ------------------------------
     # OBSERVACIONES

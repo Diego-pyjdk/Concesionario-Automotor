@@ -25,7 +25,30 @@ class Tarea(QRunnable):
             resultado, error = None, excepcion
         finally:
             sesion.contexto_trabajo.reset(token)
-        self.senales.finalizado.emit(self.numero, resultado, error)
+
+        # ------------------------------
+        # EL QUE PIDIO EL DATO PUEDE
+        # HABER DESAPARECIDO
+        # ------------------------------
+        #
+        # Cambiar de seccion o cerrar sesion con una
+        # consulta en vuelo destruye la vista que la
+        # pidio. Entonces `senales` ya no existe y
+        # `emit` avisa con "Signal source has been
+        # deleted", desde un hilo, donde no hay a quien
+        # enseñarselo.
+        #
+        # Perder el resultado es lo correcto: ya no hay
+        # pantalla que lo pinte. Lo que no puede ser es
+        # que el worker gruje en consola por eso.
+        try:
+            self.senales.finalizado.emit(
+                self.numero,
+                resultado,
+                error
+            )
+        except RuntimeError:
+            pass
 
 
 class Trabajos(QObject):
@@ -33,8 +56,27 @@ class Trabajos(QObject):
         super().__init__(parent)
         self.pendientes = {}
         self.numero = 0
+        self.cancelado = False
+
+        if parent is not None:
+            parent.destroyed.connect(self.cancelar)
+
+    def cancelar(self):
+        """
+        La vista se ha destruido: no queda nadie a quien
+        entregar el resultado.
+
+        Se vacian las pendientes para que un `terminar`
+        que llegue tarde no intente pintar sobre un
+        widget que ya no existe.
+        """
+
+        self.cancelado = True
+        self.pendientes.clear()
 
     def ejecutar(self, operacion, terminado, fallido):
+        if self.cancelado:
+            return None
         self.numero += 1
         numero = self.numero
         tarea = Tarea(numero, operacion, copy.copy(sesion.obtener_sesion()))
@@ -46,7 +88,7 @@ class Trabajos(QObject):
     @Slot(int, object, object)
     def terminar(self, numero, resultado, error):
         entrada = self.pendientes.pop(numero, None)
-        if entrada is None:
+        if entrada is None or self.cancelado:
             return
         tarea, terminado, fallido, generacion = entrada
         if generacion != sesion.generacion:

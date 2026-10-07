@@ -1,6 +1,32 @@
 # Comprobaciones de interfaz sin acceder a la base del usuario.
 import os
 os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+
+# ------------------------------
+# LA BASE REAL NO SE TOCA NI POR ERROR
+# ------------------------------
+#
+# Estas pruebas viven FUERA de `tests/`, así que pytest
+# no carga el `conftest` que levanta la base de
+# pruebas. Sin esto, si alguna se escapara y leyera o
+# escribiera, lo haría contra la base del `.env`: la
+# de trabajo.
+#
+# Por eso la base se fija AQUÍ, antes de importar
+# cualquier módulo de la aplicación (que es cuando
+# `cargar_env()` lee el entorno):
+#
+#   - Si `pruebas_concesionario` existe, se usa: es
+#     desechable.
+#   - Si no existe, la conexión falla ruidosamente, que
+#     es justo lo que tiene que pasar antes que tocar
+#     la base de trabajo.
+#
+# Un conftest.py aquí resolvería lo mismo, pero se
+# llamaría `conftest` y taparía a `tests/conftest.py`
+# en el `from conftest import leer_pdf` de otras
+# pruebas.
+os.environ['DB_NAME'] = 'pruebas_concesionario'
 from datetime import date
 from decimal import Decimal
 import json

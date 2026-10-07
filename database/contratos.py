@@ -1528,6 +1528,105 @@ def registrar_pdf(id_contrato, ruta_relativa):
 # ELIMINAR
 # ==========================================
 
+def contrato_bloqueado_por(id_contrato):
+    """
+    Qué impide borrar un contrato, o None si no hay
+    nada.
+
+    ------------------------------
+    # POR QUÉ SE COMPRUEBA ANTES
+    # ------------------------------
+
+    Las claves foráneas de `cuotas`, `pagos`,
+    `garantias` y `convenios` están en ON DELETE
+    RESTRICT: MySQL impide el borrado, pero lo
+    hace saltando una excepción de la capa de
+    datos. La pantalla recibía entonces un error de
+    base de datos en vez de una frase, y el rastro
+    lleno de "Fallo inesperado" por algo que el
+    usuario puede evitar.
+
+    Es el mismo motivo por el que `eliminar_venta()`
+    consulta `venta_bloqueada_por_contrato()` y
+    `venta_bloqueada_por_pagos()` antes de borrar.
+
+    ------------------------------
+    # QUÉ SE ENSEÑA
+    # ------------------------------
+
+    El motivo, no un sí o un no pelado: "tiene 30
+    cuotas" dice qué hacer (anular el cobro o
+    cancelar el contrato) y "no se puede" solo
+    dice que no.
+    """
+
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+
+    # (tabla, singular, plural, que hay que hacer)
+
+    bloqueos = [
+        (
+            "cuotas",
+            "una cuota del cronograma",
+            "cuotas del cronograma",
+            "Cancela el contrato en vez de borrarlo: "
+            "así queda constancia de lo que se cobró."
+        ),
+        (
+            "pagos",
+            "un pago registrado",
+            "pagos registrados",
+            "Anula el cobro equivocado y después "
+            "ya se podrá borrar."
+        ),
+        (
+            "garantias",
+            "una garantía o un gravamen",
+            "garantías o gravámenes",
+            "Libera la garantía antes de borrar."
+        ),
+        (
+            "convenios",
+            "un convenio de pago",
+            "convenios de pago",
+            "Resuelve el convenio antes de borrar."
+        )
+    ]
+
+    for tabla, uno, varios, consejo in bloqueos:
+
+        # El nombre de la tabla va en la consulta, no en
+        # un valor: es una constante de esta lista, nunca
+        # viene de fuera.
+
+        cursor.execute(
+            f"SELECT COUNT(*) FROM {tabla} "
+            "WHERE contrato_id = %s",
+            (id_contrato,)
+        )
+
+        total = cursor.fetchone()[0]
+
+        if not total:
+
+            continue
+
+        cursor.close()
+        conexion.close()
+
+        return (
+            f"El contrato tiene {total} "
+            f"{uno if total == 1 else varios} "
+            f"y no se puede borrar. {consejo}"
+        )
+
+    cursor.close()
+    conexion.close()
+
+    return None
+
+
 @conexiones_libres
 @requiere_permiso(GESTIONAR_CONTRATOS)
 def eliminar_contrato(id_contrato):
@@ -1555,15 +1654,54 @@ def eliminar_contrato(id_contrato):
 
         return (False, "El contrato no existe.")
 
+    # ------------------------------
+    # LO QUE DEPENDE DE EL
+    # ------------------------------
+
+    bloqueo = contrato_bloqueado_por(id_contrato)
+
+    if bloqueo:
+
+        return (False, bloqueo)
+
     conexion = obtener_conexion()
     cursor = conexion.cursor()
 
-    cursor.execute(
-        "DELETE FROM contratos WHERE id = %s",
-        (id_contrato,)
-    )
+    # ------------------------------
+    # Y SI ENTRE TANTO ALGO SE
+    # CUELGA, NO SUBE LA EXCEPCION
+    # ------------------------------
 
-    conexion.commit()
+    # La comprobación de arriba y el borrado no son
+    # atómicos: entre los dos, otro usuario puede
+    # registrar un cobro. Por eso el DELETE tambien
+    # cae al suelo con una frase y no con un error de
+    # MySQL.
+
+    try:
+
+        cursor.execute(
+            "DELETE FROM contratos WHERE id = %s",
+            (id_contrato,)
+        )
+
+        conexion.commit()
+
+    except mysql.connector.IntegrityError:
+
+        conexion.rollback()
+
+        cursor.close()
+        conexion.close()
+
+        return (
+            False,
+            "El contrato tiene movimientos "
+            "asociados y no se puede borrar. "
+            "Consúltalo de nuevo: alguien pudo "
+            "registrar un cobro mientras lo "
+            "borrabas."
+        )
 
     cursor.close()
     conexion.close()

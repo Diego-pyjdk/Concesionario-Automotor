@@ -45,6 +45,14 @@ from PySide6.QtWidgets import (
 import database.cobranza as cobranza
 import database.financiera as financiera
 
+# El plazo por defecto de "por vencer" vive en database.financiera.
+# Se importa también suelto porque el combo de la pantalla lo usa
+# como valor de repuesto cuando el texto tecleado no es un número:
+# sin este import, esa línea era un NameError y tumbaba la
+# pestaña entera.
+
+from database.financiera import DIAS_AVISO_POR_DEFECTO
+
 from permisos import (
     tiene_permiso,
     GESTIONAR_FINANCIERA

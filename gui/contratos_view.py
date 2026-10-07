@@ -39,6 +39,8 @@ from database.contratos import (
     TRANSICIONES
 )
 
+from database.financiera import obtener_cuotas
+
 from permisos import (
     tiene_permiso,
     CREAR_CONTRATOS
@@ -562,7 +564,16 @@ class ContratosView(VistaListado):
 
         try:
 
-            ruta = generar_contrato(contrato)
+            ruta = generar_contrato(
+                contrato,
+                # El cronograma va en el documento: un
+                # contrato financiado sin la tabla de
+                # vencimientos no dice cuánto ni cuándo.
+                cuotas=self.proteger(
+                    obtener_cuotas,
+                    contrato["id"]
+                ) or []
+            )
 
         except OSError as error:
 

@@ -2017,7 +2017,14 @@ class ContratoDetalleDialog(QDialog):
 
         try:
 
-            ruta = generar_contrato(self.contrato)
+            ruta = generar_contrato(
+                self.contrato,
+                # El cronograma ya está cargado en
+                # `self.cuotas`: un contrato financiado
+                # sin la tabla de vencimientos no dice
+                # cuánto ni cuándo tiene que pagar.
+                cuotas=self.cuotas
+            )
 
         except Exception as error:
 
@@ -2229,7 +2236,7 @@ class ContratoDetalleDialog(QDialog):
 
             return None
 
-        return grupos[texts.index(elegido)]
+        return grupos[textos.index(elegido)]
 
     def avisar_documento(self, que, ruta):
         """
