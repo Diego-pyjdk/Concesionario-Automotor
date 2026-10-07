@@ -779,6 +779,55 @@ QLabel#estado_vacio_detalle {
 
 
 /* ============================================================
+   BADGES DE ESTADO
+   ============================================================
+   Etiquetas con fondo para estados en fichas y
+   detalles.
+   ============================================================ */
+
+QLabel#badge {
+    background-color: #e2e8f0;
+    color: #334155;
+    border-radius: 10px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+QLabel#badge_ok {
+    background-color: #dcfce7;
+    color: #15803d;
+}
+
+QLabel#badge_info {
+    background-color: #dbeafe;
+    color: #1d4ed8;
+}
+
+QLabel#badge_warn {
+    background-color: #fef3c7;
+    color: #b45309;
+}
+
+QLabel#badge_danger {
+    background-color: #fee2e2;
+    color: #b91c1c;
+}
+
+QLabel#precio_grande {
+    color: #0f172a;
+    font-size: 24px;
+    font-weight: bold;
+}
+
+QFrame#ficha_cabecera {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+}
+
+
+/* ============================================================
    MOSAICOS DEL PANEL
    ============================================================
    Cifras secundarias: menos peso visual que las
@@ -884,3 +933,15 @@ QWidget#menu_sidebar {background:#0f172a;}
 QFrame#sidebar QScrollArea {background:transparent;}
 QFrame#sidebar[contraido="true"] QPushButton#boton_menu,
 QFrame#sidebar[contraido="true"] QPushButton#boton_menu_activo {padding:6px;}
+
+/* Acento visible en el ítem activo del menú lateral */
+QFrame#sidebar QPushButton#boton_menu_activo {
+    border-left: 4px solid #60a5fa;
+}
+
+/* Cabecera de ficha de vehículo */
+QLabel#cabecera_ficha {
+    color: #0f172a;
+    font-size: 15px;
+    font-weight: bold;
+}

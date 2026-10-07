@@ -1,0 +1,31 @@
+LUXURYCARS - LOGIN INTEGRADO
+
+1. Cierra el sistema y conserva una copia de tu carpeta anterior.
+2. Extrae TODO el ZIP; no ejecutes desde dentro del archivo comprimido.
+3. Abre la carpeta concesionario y ejecuta INICIAR_LUXURYCARS.bat.
+   En VS Code: venv\Scripts\python.exe main.py
+4. Conserva tu .env con la conexión actual. El ZIP conserva el contenido
+   del proyecto que entregaste. No hace falta ejecutar SQL por este cambio.
+
+Incluye el entorno venv original de Windows, sin renombrarlo a .venv.
+Los entornos virtuales dependen de Python instalado y pueden conservar
+rutas absolutas del equipo donde se crearon. Si no arranca al moverlo:
+- Renombra venv como venv_anterior (no lo borres).
+- Ejecuta: py -m venv venv
+- Ejecuta: venv\Scripts\python.exe -m pip install -r requirements.txt
+- Ejecuta: venv\Scripts\python.exe main.py
+
+El servidor y los registros de MySQL no se incluyen en un entorno virtual.
+Usa el mismo servidor y base de datos que ya tenías.
+
+Implementado: nombre LuxuryCars, fotografía original, logo vectorial,
+lema, formulario oscuro, mostrar/ocultar contraseña, Enter para entrar,
+Escape/Cancelar para salir, navegación por teclado y mensajes de error.
+La foto se oculta en ventanas estrechas para que el formulario siga usable.
+Las rutas de imágenes funcionan independientemente del directorio de inicio.
+La autenticación, roles y bloqueos de cuentas conservan el flujo existente.
+
+ACTUALIZACIÓN: Fondo fotográfico también dentro del sistema.
+Cabecera LuxuryCars y fondo compartido en todas las secciones.
+Los paneles conservan contraste en modo claro y oscuro.
+Esta actualización no requiere cambios SQL.

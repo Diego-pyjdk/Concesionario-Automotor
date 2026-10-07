@@ -24,9 +24,9 @@ from permisos import (
 # DATOS DEL SISTEMA
 # =============================
 
-NOMBRE_SISTEMA = "Concesionario Automotor"
+NOMBRE_SISTEMA = "LuxuryCars"
 
-VERSION_SISTEMA = "1.2.1"
+VERSION_SISTEMA = "1.3.1"
 
 CLAVE_STOCK_MINIMO = "stock_minimo"
 

@@ -696,7 +696,7 @@ def main():
 
     print()
     print("  VERIFICACIÓN DE LA INSTALACIÓN")
-    print("  Concesionario Automotor")
+    print("  LuxuryCars")
 
     comprobar_python()
     comprobar_venv()

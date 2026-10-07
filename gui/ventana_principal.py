@@ -1,3 +1,4 @@
+from gui.login_view import PanelFotografia
 from gui.vista_base import VistaBase
 from gui.tema import aplicar_tema, AJUSTES
 from gui.iconos import icono
@@ -145,7 +146,7 @@ class VentanaPrincipal(QMainWindow):
 
     def crear_interfaz(self):
 
-        contenedor = QWidget()
+        contenedor = PanelFotografia()
         self.setCentralWidget(contenedor)
 
         layout_principal = QHBoxLayout()
@@ -160,7 +161,28 @@ class VentanaPrincipal(QMainWindow):
 
         self.sidebar = sidebar
         layout_principal.addWidget(sidebar)
-        layout_principal.addWidget(self.paginas)
+        self.fondo_contenido = QWidget()
+        self.fondo_contenido.setObjectName("contenido_luxury")
+        columna = QVBoxLayout(self.fondo_contenido)
+        columna.setContentsMargins(18, 0, 18, 18)
+        columna.setSpacing(0)
+        cabecera = QWidget()
+        cabecera.setObjectName("cabecera_luxury")
+        cabecera.setFixedHeight(140)
+        rotulos = QVBoxLayout(cabecera)
+        rotulos.setContentsMargins(24, 22, 24, 22)
+        marca = QLabel(NOMBRE_SISTEMA)
+        marca.setObjectName("marca_interior_luxury")
+        lema = QLabel("Los autos de tus sueños en LuxuryCars")
+        lema.setObjectName("lema_interior_luxury")
+        lema.setWordWrap(True)
+        rotulos.addWidget(marca)
+        rotulos.addWidget(lema)
+        columna.addWidget(cabecera)
+        self.paginas.setObjectName("paginas_luxury")
+        columna.addWidget(self.paginas, 1)
+        layout_principal.addWidget(self.fondo_contenido, 1)
+        self.actualizar_fondo_luxury()
 
         self.construir_paginas()
         if str(AJUSTES.value('menu_contraido','false')).lower() == 'true':
@@ -301,7 +323,7 @@ class VentanaPrincipal(QMainWindow):
 
         sidebar.setLayout(layout)
 
-        titulo = QLabel("CONCESIONARIO")
+        titulo = QLabel(NOMBRE_SISTEMA)
         self.titulo_sidebar = titulo
         titulo.setObjectName("titulo_sidebar")
         titulo.setAlignment(Qt.AlignCenter)
@@ -421,7 +443,19 @@ class VentanaPrincipal(QMainWindow):
             area = QScrollArea()
             area.setFrameShape(QFrame.NoFrame)
             area.setWidgetResizable(True)
+            pagina.setObjectName("pagina_luxury")
+            pagina.setAutoFillBackground(False)
+            for widget in pagina.findChildren(QWidget):
+                if type(widget) is QWidget and not widget.objectName():
+                    widget.setObjectName("superficie_transparente_luxury")
+            area.setObjectName("area_luxury")
             area.setWidget(pagina)
+            area.viewport().setAutoFillBackground(False)
+            area.viewport().setObjectName("viewport_luxury")
+            for desplazamiento in pagina.findChildren(QScrollArea):
+                desplazamiento.setObjectName("area_luxury")
+                desplazamiento.viewport().setAutoFillBackground(False)
+                desplazamiento.viewport().setObjectName("viewport_luxury")
             area.setMinimumSize(0,0)
             area.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Ignored)
             self.paginas.insertWidget(indice, area)
@@ -458,6 +492,31 @@ class VentanaPrincipal(QMainWindow):
 
     def alternar_tema(self):
         aplicar_tema(not bool(QApplication.instance().property('tema_oscuro')))
+        self.actualizar_fondo_luxury()
+
+    def actualizar_fondo_luxury(self):
+        # Solo los contenedores dejan ver la fotografía; las tablas y
+        # tarjetas conservan sus superficies y colores de cada tema.
+        oscuro = bool(QApplication.instance().property("tema_oscuro"))
+        superficie = "rgba(11, 22, 40, 215)" if oscuro else "rgba(241, 245, 249, 230)"
+        self.fondo_contenido.setStyleSheet("""
+            QWidget#contenido_luxury, QWidget#cabecera_luxury,
+            QWidget#pagina_luxury, QWidget#superficie_transparente_luxury,
+            QScrollArea#area_luxury, QWidget#viewport_luxury {
+                background: transparent; border: none;
+            }
+            QStackedWidget#paginas_luxury {
+                background: %s; border-radius: 14px;
+            }
+            QLabel#marca_interior_luxury {
+                background: transparent; color: #ffffff;
+                font-size: 32px; font-weight: 700;
+            }
+            QLabel#lema_interior_luxury {
+                background: transparent; color: #e2e8f0;
+                font-size: 16px;
+            }
+        """ % superficie)
 
     def alternar_menu(self):
         contraido = self.sidebar.width() > 100
@@ -472,7 +531,7 @@ class VentanaPrincipal(QMainWindow):
             boton.setText('' if contraido else boton.property('texto_completo'))
         for etiqueta in self.grupos_menu:
             etiqueta.setVisible(not contraido)
-        self.titulo_sidebar.setText('C' if contraido else 'CONCESIONARIO')
+        self.titulo_sidebar.setText('LC' if contraido else NOMBRE_SISTEMA)
         self.etiqueta_usuario.setVisible(not contraido)
         self.boton_salir.setText('Salir' if contraido else 'Cerrar sesión')
         AJUSTES.setValue('menu_contraido', contraido)

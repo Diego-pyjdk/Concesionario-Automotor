@@ -1,3 +1,20 @@
+# Fondo interior (2026-10-07)
+- VentanaPrincipal reutiliza PanelFotografia del login y el mismo recurso.
+- actualizar_fondo_luxury adapta la superficie translúcida a claro/oscuro.
+- Áreas de scroll y contenedores transparentes, tablas y tarjetas opacas.
+
+# Login LuxuryCars (2026-10-06)
+
+- `gui/login_view.py` contiene el login visual completo con controles reales.
+- Recursos locales: `assets/login_fondo.png` y `assets/logo_luxurycars.svg`.
+- Las rutas parten de `__file__`; conservar los recursos al distribuir.
+- El formulario usa estilos propios y el panel fotográfico se oculta bajo 850 px.
+- Conservar el flujo autenticar -> iniciar_sesion -> accept y la protección sin usuarios.
+- El ZIP conserva venv original de Windows; puede requerir recreación al moverlo.
+- Verificado en Qt offscreen: apertura, recursos, contraseña, Enter (una llamada),
+  error de acceso, sesión simulada, ancho reducido y ausencia de usuarios.
+- No se probó la conexión al MySQL del usuario desde este entorno.
+
 # Actualización de esta entrega (2026-10-06)
 
 - Son 17 tablas. `sql/actualizar_mejoras.sql` es aditivo e idempotente para la versión
